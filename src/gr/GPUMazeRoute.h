@@ -13,7 +13,7 @@ public:
   GPUMazeRoute &operator=(GPUMazeRoute &&) = delete;
   ~GPUMazeRoute();
 
-  void route(const std::vector<int> &netIndices, int sweepTurns);
+  void route(const std::vector<int> &netIndices, int sweepTurns, int margin);
   void commit(const std::vector<int> &netIndices);
   void getOverflowNetIndices(std::vector<int> &netIndices) const;
 

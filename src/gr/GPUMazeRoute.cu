@@ -83,13 +83,15 @@ __host__ __device__ float logistic(float x, float slope)
 // CUDA Kernel
 // ------------------------------
 
-__global__ void calculateWireCostSum(float *wireCostSum, const float *wireCost, int DIRECTION, int N, int X, int Y, int LAYER)
+__global__ void calculateWireCostSum(float *wireCostSum, const float *wireCost, int offsetX, int offsetY, int lenX, int lenY, int DIRECTION, int N, int X, int Y, int LAYER)
 {
   extern __shared__ float sum[];
   for (int i = 1; i < LAYER; i++)
   {
-    int offset = i * N * N + blockIdx.x * N;
-    int len = (i & 1) ^ DIRECTION ? X : Y;
+    if(blockIdx.x > ((i & 1) ^ DIRECTION ? lenY : lenX))
+      continue;
+    int offset = i * N * N + blockIdx.x * N + ((i & 1) ^ DIRECTION ? offsetY * N + offsetX : offsetX * N + offsetY);
+    int len = (i & 1) ^ DIRECTION ? lenX : lenY;
     for(int cur = threadIdx.x; cur < len; cur += blockDim.x)
       sum[cur] = wireCost[offset + cur];
     __syncthreads();
@@ -112,11 +114,17 @@ __global__ void calculateWireCostSum(float *wireCostSum, const float *wireCost, 
   }
 }
 
-__global__ void cleanDistPrev(float *dist, int *prev, int isFirstIteration, int N, int LAYER)
+__global__ void cleanDistPrev(float *dist, int *prev, int isFirstIteration, int offsetX, int offsetY, int lenX, int lenY, int DIRECTION, int N, int X, int Y, int LAYER)
 {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx >= LAYER * N * N)
+  int x = blockIdx.x * blockDim.x + threadIdx.x;
+  int y = blockIdx.y * blockDim.y + threadIdx.y;
+  int z = blockIdx.z * blockDim.z + threadIdx.z;
+  if (x >= lenX || y >= lenY || z >= LAYER)
     return;
+  x += offsetX;
+  y += offsetY;
+
+  int idx = xyzToIdx(x, y, z, DIRECTION, N);
   if (isFirstIteration || dist[idx] > 0)
   {
     dist[idx] = INF;
@@ -133,18 +141,20 @@ __global__ void setRootPin(float *dist, int *prev, int *isRoutedPin, const int *
   prev[allpins[1]] = allpins[1];
 }
 
-__global__ void sweepWire(float *dist, int *prev, const float *costSum, int DIRECTION, int N, int X, int Y, int LAYER)
+__global__ void sweepWire(float *dist, int *prev, const float *costSum, int offsetX, int offsetY, int lenX, int lenY, int DIRECTION, int N, int X, int Y, int LAYER)
 {
   extern __shared__ int shared[];
   float *minL = (float *)(shared);
-  float *minR = (float *)(shared + N);
-  int *pL = shared + 2 * N;
-  int *pR = shared + 3 * N;
+  float *minR = (float *)(shared + max(lenX, lenY));
+  int *pL = shared + 2 * max(lenX, lenY);
+  int *pR = shared + 3 * max(lenX, lenY);
 
   for (int i = 1; i < LAYER; i++)
   {
-    int offset = i * N * N + blockIdx.x * N;
-    int len = (i & 1) ^ DIRECTION ? X : Y;
+    if(blockIdx.x > ((i & 1) ^ DIRECTION ? lenY : lenX))
+      continue;
+    int offset = i * N * N + blockIdx.x * N + ((i & 1) ^ DIRECTION ? offsetY * N + offsetX : offsetX * N + offsetY);
+    int len = (i & 1) ^ DIRECTION ? lenX : lenY;
     for(int cur = threadIdx.x; cur < len; cur += blockDim.x)
     {
       minL[cur] = dist[offset + cur] - costSum[offset + cur];
@@ -200,12 +210,14 @@ __global__ void sweepWire(float *dist, int *prev, const float *costSum, int DIRE
   }
 }
 
-__global__ void sweepVia(float *dist, int *prev, const float *viaCost, int DIRECTION, int N, int X, int Y, int LAYER)
+__global__ void sweepVia(float *dist, int *prev, const float *viaCost, int offsetX, int offsetY, int lenX, int lenY, int DIRECTION, int N, int X, int Y, int LAYER)
 {
   int x = blockIdx.x * blockDim.x + threadIdx.x;
   int y = blockIdx.y * blockDim.y + threadIdx.y;
-  if (x >= X || y >= Y)
+  if (x >= lenX || y >= lenY)
     return;
+  x += offsetX;
+  y += offsetY;
 
   int p[MAX_NUM_LAYER];
   for (int i = 0; i < LAYER; i++)
@@ -366,13 +378,18 @@ __global__ void commitRoutes(float *demand, const float *hEdgeLengths, const flo
 }
 
 // Note: cuda和cpu分别计算的wire cost之间最大误差为0.000134，via cost之间误差最大误差为0.022000
-__global__ void calculateWireViaCost(float *wireCost, float *viaCost, const float *demand, const float *capacity, const float *hEdgeLengths, const float *vEdgeLengths, const float *layerMinLengths,
-                                     const float *unitLengthShortCosts, float unitLengthWireCost, float unitViaCost, float logisticSlope, float viaMultiplier, int DIRECTION, int N, int X, int Y, int LAYER)
+__global__ void calculateWireViaCost(float *wireCost, float *viaCost, const float *demand, const float *capacity, const float *hEdgeLengths, const float *vEdgeLengths,
+                                     const float *layerMinLengths, const float *unitLengthShortCosts, float unitLengthWireCost, float unitViaCost, float logisticSlope, float viaMultiplier,
+                                     int offsetX, int offsetY, int lenX, int lenY, int DIRECTION, int N, int X, int Y, int LAYER)
 {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  auto [x, y, z] = idxToXYZ(idx, DIRECTION, N);
-  if (x >= X || y >= Y || z >= LAYER)
+  int x = blockIdx.x * blockDim.x + threadIdx.x;
+  int y = blockIdx.y * blockDim.y + threadIdx.y;
+  int z = blockIdx.z * blockDim.z + threadIdx.z;
+  if(x >= lenX || y >= lenY || z >= LAYER)
     return;
+  x += offsetX;
+  y += offsetY;
+  int idx = xyzToIdx(x, y, z, DIRECTION, N);
 
   // wire cost
   float edgeLength = ((z & 1) ^ DIRECTION) ? (x >= 1 ? hEdgeLengths[x] : 0.f) : (y >= 1 ? vEdgeLengths[y] : 0.f);
@@ -635,7 +652,7 @@ GPUMazeRoute::~GPUMazeRoute()
   checkCudaErrors(cudaFree(devLastPrev));
 }
 
-void GPUMazeRoute::route(const std::vector<int> &netIndices, int sweepTurns)
+void GPUMazeRoute::route(const std::vector<int> &netIndices, int sweepTurns, int margin)
 {
   // 撤销
   int numNetToRoute = netIndices.size();
@@ -662,44 +679,47 @@ void GPUMazeRoute::route(const std::vector<int> &netIndices, int sweepTurns)
     int *cpuNetRoutes = cpuRoutes + cpuRoutesOffset[netId];
     int netRoutesLen = cpuRoutesOffset[netId + 1] - cpuRoutesOffset[netId];
     checkCudaErrors(cudaMemset(devNetRoutes, 0, netRoutesLen * sizeof(int)));
+    // 扫描范围
+    const auto &box = nets[netId].getBoundingBox();
+    int offsetX = std::max(0, box.lx() - margin);
+    int offsetY = std::max(0, box.ly() - margin);
+    int lenX = std::min(X - offsetX, box.width() + 2 * margin);
+    int lenY = std::min(Y - offsetY, box.height() + 2 * margin);
+    int maxlen = std::max(lenX, lenY);
 
     ::utils::log() << "gamer routing. netId = " << netId << ". #pins = " << points.size() << ". #turns = " << (points.size() - 1) * sweepTurns << "\n";
 
     // compute wireCost, viaCost
-    calculateWireViaCost<<<BLOCK_NUMBER(LAYER * N * N), BLOCK_SIZE>>>(
-        devWireCost, devViaCost, devDemand, devCapacity, devHEdgeLengths, devVEdgeLengths, devLayerMinLengths,
-        devUnitLengthShortCosts, unitLengthWireCost, unitViaCost, logisticSlope, viaMultiplier, DIRECTION, N, X, Y, LAYER);
-    calculateWireCostSum<<<N, (N + 1) / 2, N * sizeof(float), 0>>>(devWireCostSum, devWireCost, DIRECTION, N, X, Y, LAYER);
+    calculateWireViaCost<<<dim3((lenX + 31) / 32, (lenY + 31) / 32, LAYER), dim3(32, 32, 1)>>>(
+        devWireCost, devViaCost, devDemand, devCapacity, devHEdgeLengths, devVEdgeLengths,
+        devLayerMinLengths, devUnitLengthShortCosts, unitLengthWireCost, unitViaCost, logisticSlope, viaMultiplier,
+        offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER
+    );
+    calculateWireCostSum<<<maxlen, (maxlen + 1) / 2, maxlen * sizeof(float)>>>(
+      devWireCostSum, devWireCost, offsetX, offsetY, lenX, lenY,  DIRECTION, N, X, Y, LAYER
+    );
 
     // maze routing
-    cleanDistPrev<<<BLOCK_NUMBER(LAYER * N * N), BLOCK_SIZE>>>(devDist, devPrev, 1, N, LAYER);
+    cleanDistPrev<<<dim3((lenX + 31) / 32, (lenY + 31) / 32, LAYER), dim3(32, 32, 1)>>>(
+      devDist, devPrev, 1, offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER
+    );
     setRootPin<<<1, 1>>>(devDist, devPrev, devIsRoutedPin, devAllpins);
     cpuRootIndices[netId] = cpuAllpins[1];
     for (int iter = 1; iter < points.size(); iter++)
     {
       for (int turn = 0; turn < sweepTurns; turn++)
       {
-        sweepVia<<<dim3(BLOCK_NUMBER_X(X), BLOCK_NUMBER_Y(Y)), dim3(BLOCK_SIZE_X, BLOCK_SIZE_Y)>>>(devDist, devPrev, devViaCost, DIRECTION, N, X, Y, LAYER);
-        sweepWire<<<N, (N + 1) / 2, 4 * N * sizeof(float), 0>>>(devDist, devPrev, devWireCostSum, DIRECTION, N, X, Y, LAYER);
+        sweepVia<<<dim3((lenX + 31) / 32, (lenY + 31) / 32, 1), dim3(32, 32, 1)>>>(
+          devDist, devPrev, devViaCost, offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER
+        );
+        sweepWire<<<maxlen, (maxlen + 1) / 2, 4 * maxlen * sizeof(float)>>>(
+          devDist, devPrev, devWireCostSum, offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER
+        );
       }
-      // for (int turn = 0; turn < 2; turn++)
-      // {
-      //   sweepVia<<<dim3(BLOCK_NUMBER_X(X), BLOCK_NUMBER_Y(Y)), dim3(BLOCK_SIZE_X, BLOCK_SIZE_Y)>>>(devDist, devPrev, devViaCost, DIRECTION, N, X, Y, LAYER);
-      //   sweepWire<<<N, (N + 1) / 2, 4 * N * sizeof(float), 0>>>(devDist, devPrev, devWireCostSum, DIRECTION, N, X, Y, LAYER);
-      // }
-      // for(int turn = 2; turn < sweepTurns; turn++)
-      // {
-      //   checkCudaErrors(cudaMemcpy(devLastPrev, devPrev, LAYER * N * N * sizeof(int), cudaMemcpyDeviceToDevice));
-      //   sweepVia<<<dim3(BLOCK_NUMBER_X(X), BLOCK_NUMBER_Y(Y)), dim3(BLOCK_SIZE_X, BLOCK_SIZE_Y)>>>(devDist, devPrev, devViaCost, DIRECTION, N, X, Y, LAYER);
-      //   sweepWire<<<N, (N + 1) / 2, 4 * N * sizeof(float), 0>>>(devDist, devPrev, devWireCostSum, DIRECTION, N, X, Y, LAYER);
-      //   checkIsIdentical<<<REDUCED_SIZE, BLOCK_SIZE, BLOCK_SIZE * sizeof(int), 0>>>(devIsIdentical, devLastPrev, devPrev, LAYER * N * N);
-      //   checkCudaErrors(cudaMemcpy(cpuIsIdentical, devIsIdentical, REDUCED_SIZE * sizeof(int), cudaMemcpyDeviceToHost));
-      //   if(std::reduce(cpuIsIdentical, cpuIsIdentical + REDUCED_SIZE, 1, [](int x, int y) { return x & y; }))
-      //     break;
-      // }
-      sweepVia<<<dim3(BLOCK_NUMBER_X(X), BLOCK_NUMBER_Y(Y)), dim3(BLOCK_SIZE_X, BLOCK_SIZE_Y)>>>(devDist, devPrev, devViaCost, DIRECTION, N, X, Y, LAYER);
       tracePath<<<1, 1>>>(devDist, devPrev, devIsRoutedPin, devNetRoutes, devAllpins, DIRECTION, N, X, Y, LAYER);
-      cleanDistPrev<<<BLOCK_NUMBER(LAYER * N * N), BLOCK_SIZE>>>(devDist, devPrev, 0, N, LAYER);
+      cleanDistPrev<<<dim3((lenX + 31) / 32, (lenY + 31) / 32, LAYER), dim3(32, 32, 1)>>>(
+        devDist, devPrev, 0, offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER
+      );
     }
 
     // commit route

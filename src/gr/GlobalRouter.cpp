@@ -135,8 +135,8 @@ void GlobalRouter::route() {
         log() << "stage 3: gpu maze routing\n";
         GPUMazeRoute gamer(nets, gridGraph, parameters);
         log() << "gamer init. overflow net: " << netIndices.size() << "/" << nets.size() << "\n";
-        for(int iter = 0; iter < 3 && netIndices.size() > 0; iter++) {
-            gamer.route(netIndices, 4 + iter);
+        for(int iter = 1; iter <= 3 && netIndices.size() > 0; iter++) {
+            gamer.route(netIndices, 3 + iter, 10 * iter);
             for(auto netId : netIndices)
                 isGamerRoutedNet[netId] = true;
             gamer.getOverflowNetIndices(netIndices);
