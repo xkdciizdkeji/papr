@@ -90,29 +90,24 @@ __global__ void calculateWireCostSum(float *wireCostSum, const float *wireCost, 
   {
     int offset = i * N * N + blockIdx.x * N;
     int len = (i & 1) ^ DIRECTION ? X : Y;
-#pragma unroll
-    for (int cur = threadIdx.x * 2; cur <= threadIdx.x * 2 + 1; cur++)
-    {
-      if (cur < len)
-        sum[cur] = wireCost[offset + cur];
-    }
+    for(int cur = threadIdx.x; cur < len; cur += blockDim.x)
+      sum[cur] = wireCost[offset + cur];
     __syncthreads();
     for (int d = 0; (1 << d) < len; d++)
     {
-      // int src = (1 << d) + (threadIdx.x >> d << (d + 1)) - 1;
-      // int dst = (1 << d) + threadIdx.x + (threadIdx.x >> d << d);
-      int dst = (threadIdx.x >> d << (d + 1) | (1 << d)) | (threadIdx.x & ((1 << d) - 1));
-      int src = (dst >> d << d) - 1;
-      if (dst < len)
-        sum[dst] += sum[src];
+      for(int cur = threadIdx.x; cur < (len + 1) / 2; cur += blockDim.x)
+      {
+        // int src = (1 << d) + (threadIdx.x >> d << (d + 1)) - 1;
+        // int dst = (1 << d) + threadIdx.x + (threadIdx.x >> d << d);
+        int dst = (threadIdx.x >> d << (d + 1) | (1 << d)) | (threadIdx.x & ((1 << d) - 1));
+        int src = (dst >> d << d) - 1;
+        if (dst < len)
+          sum[dst] += sum[src];
+      }
       __syncthreads();
     }
-#pragma unroll
-    for (int cur = threadIdx.x * 2; cur <= threadIdx.x * 2 + 1; cur++)
-    {
-      if (cur < len)
-        wireCostSum[offset + cur] = sum[cur];
-    }
+    for(int cur = threadIdx.x; cur < len; cur += blockDim.x)
+      wireCostSum[offset + cur] = sum[cur];
     __syncthreads();
   }
 }
@@ -150,41 +145,40 @@ __global__ void sweepWire(float *dist, int *prev, const float *costSum, int DIRE
   {
     int offset = i * N * N + blockIdx.x * N;
     int len = (i & 1) ^ DIRECTION ? X : Y;
-#pragma unroll
-    for (int cur = threadIdx.x * 2; cur <= threadIdx.x * 2 + 1; cur++)
+    for(int cur = threadIdx.x; cur < len; cur += blockDim.x)
     {
-      if (cur < len)
-      {
-        minL[cur] = dist[offset + cur] - costSum[offset + cur];
-        minR[len - 1 - cur] = dist[offset + cur] + costSum[offset + cur];
-        pL[cur] = cur;
-        pR[len - 1 - cur] = cur;
-      }
+      minL[cur] = dist[offset + cur] - costSum[offset + cur];
+      minR[len - 1 - cur] = dist[offset + cur] + costSum[offset + cur];
+      pL[cur] = cur;
+      pR[len - 1 - cur] = cur;
     }
     __syncthreads();
     for (int d = 0; (1 << d) < len; d++)
     {
-      // int src = (1 << d) + (threadIdx.x >> d << (d + 1)) - 1;
-      // int dst = (1 << d) + threadIdx.x + (threadIdx.x >> d << d);
-      int dst = (threadIdx.x >> d << (d + 1) | (1 << d)) | (threadIdx.x & ((1 << d) - 1));
-      int src = (dst >> d << d) - 1;
-      if (dst < len)
+      // 对于长度为N的数组，需要(N+1)/2个线程工作
+      for(int cur = threadIdx.x; cur < (len + 1) / 2; cur += blockDim.x)
       {
-        if (minL[dst] > minL[src])
+        // int src = (1 << d) + (threadIdx.x >> d << (d + 1)) - 1;
+        // int dst = (1 << d) + threadIdx.x + (threadIdx.x >> d << d);
+        int dst = (cur >> d << (d + 1) | (1 << d)) | (cur & ((1 << d) - 1));
+        int src = (dst >> d << d) - 1;
+        if (dst < len)
         {
-          minL[dst] = minL[src];
-          pL[dst] = pL[src];
-        }
-        if (minR[dst] > minR[src])
-        {
-          minR[dst] = minR[src];
-          pR[dst] = pR[src];
+          if (minL[dst] > minL[src])
+          {
+            minL[dst] = minL[src];
+            pL[dst] = pL[src];
+          }
+          if (minR[dst] > minR[src])
+          {
+            minR[dst] = minR[src];
+            pR[dst] = pR[src];
+          }
         }
       }
       __syncthreads();
     }
-#pragma unroll
-    for (int cur = threadIdx.x * 2; cur <= threadIdx.x * 2 + 1; cur++)
+    for(int cur = threadIdx.x; cur < len; cur += blockDim.x)
     {
       if (cur < len)
       {
@@ -195,16 +189,6 @@ __global__ void sweepWire(float *dist, int *prev, const float *costSum, int DIRE
           val = minR[len - 1 - cur] - costSum[offset + cur];
           p = pR[len - 1 - cur];
         }
-        // if(i == 2 && blockIdx.x == 1 && cur == 1)
-        // {
-        //   printf("=================================\n");
-        //   printf("%f %f\n", val, dist[offset + cur]);
-        //   printf("%d\n", val < dist[offset + cur]);
-        //   printf("%d\n", val + 0.0001f < dist[offset + cur]);
-        //   printf("=================================\n");
-        // }
-        // !!! BUG !!!
-        // TODO：将cost的类型改成int
         if (val < dist[offset + cur] && cur != p)
         {
           dist[offset + cur] = val;
@@ -679,7 +663,7 @@ void GPUMazeRoute::route(const std::vector<int> &netIndices, int sweepTurns)
     int netRoutesLen = cpuRoutesOffset[netId + 1] - cpuRoutesOffset[netId];
     checkCudaErrors(cudaMemset(devNetRoutes, 0, netRoutesLen * sizeof(int)));
 
-    log() << "gamer routing. netId = " << netId << ". #pins = " << points.size() << ". #turns = " << (points.size() - 1) * sweepTurns << "\n";
+    ::utils::log() << "gamer routing. netId = " << netId << ". #pins = " << points.size() << ". #turns = " << (points.size() - 1) * sweepTurns << "\n";
 
     // compute wireCost, viaCost
     calculateWireViaCost<<<BLOCK_NUMBER(LAYER * N * N), BLOCK_SIZE>>>(
@@ -763,7 +747,7 @@ void GPUMazeRoute::commit(const std::vector<int> &netIndices)
     }
     else
     {
-      log() << "warning: net(id=" << netId << ") is not routed\n";
+      ::utils::log() << "warning: net(id=" << netId << ") is not routed\n";
     }
   }
 }
