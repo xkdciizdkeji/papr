@@ -64,7 +64,4 @@ private:
 
   float *devDist;
   int *devPrev;
-
-  int *cpuIsIdentical, *devIsIdentical;
-  int *devLastPrev;
 };
