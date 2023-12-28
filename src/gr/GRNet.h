@@ -1,10 +1,16 @@
 #pragma once
-#include "../obj/Design.h"
-#include "GridGraph.h"
+// #include "../obj/Design.h"
+// #include "GridGraph.h"
+
+#include <vector>
+#include <string>
+#include "GRTree.h"
+#include "../utils/utils.h"
 
 class GRNet {
 public:
-    GRNet(const Net& baseNet, const Design& design, const GridGraph& gridGraph);
+    // GRNet(const Net& baseNet, const Design& design, const GridGraph& gridGraph);
+    GRNet(int index, const std::string &name, const std::vector<std::vector<std::tuple<int, int, int>>> &pinAccessPoints);
     
     int getIndex() const { return index; }
     std::string getName() const { return name; }

@@ -1,8 +1,8 @@
 #pragma once
-#include "../obj/Design.h"
 #include "GRTree.h"
+#include "../obj/ISPD24Parser.h"
+#include "../utils/utils.h"
 
-using CapacityT = double;
 class GRNet;
 template <typename Type> class GridGraphView;
 
@@ -15,9 +15,8 @@ struct GraphEdge {
 
 class GridGraph {
 public:
-    GridGraph(const Design& design, const Parameters& params);
-    inline DBU getLibDBU() const { return libDBU; }
-    inline DBU getM2Pitch() const { return m2_pitch; }
+    // GridGraph(const Design& design, const Parameters& params);
+    GridGraph(const ISPD24Parser &parser, const Parameters &params);
     inline unsigned getNumLayers() const { return nLayers; }
     inline unsigned getSize(unsigned dimension) const { return (dimension ? ySize : xSize); }
     inline std::string getLayerName(int layerIndex) const { return layerNames[layerIndex]; }
@@ -65,8 +64,6 @@ public:
     void write(const std::string heatmap_file="heatmap.txt") const;
     
 private:
-    const DBU libDBU;
-    DBU m2_pitch;
     const Parameters& parameters;
     
     unsigned nLayers;
@@ -109,12 +106,12 @@ public:
     bool check(const utils::PointT<int>& u, const utils::PointT<int>& v) const {
         assert(u.x == v.x || u.y == v.y);
         if (u.y == v.y) {
-            int l = min(u.x, v.x), h = max(u.x, v.x);
+            int l = std::min(u.x, v.x), h = std::max(u.x, v.x);
             for (int x = l; x < h; x++) {
                 if ((*this)[MetalLayer::H][x][u.y]) return true;
             }
         } else {
-            int l = min(u.y, v.y), h = max(u.y, v.y);
+            int l = std::min(u.y, v.y), h = std::max(u.y, v.y);
             for (int y = l; y < h; y++) {
                 if ((*this)[MetalLayer::V][u.x][y]) return true;
             }
@@ -126,12 +123,12 @@ public:
         assert(u.x == v.x || u.y == v.y);
         Type res = 0;
         if (u.y == v.y) {
-            int l = min(u.x, v.x), h = max(u.x, v.x);
+            int l = std::min(u.x, v.x), h = std::max(u.x, v.x);
             for (int x = l; x < h; x++) {
                 res += (*this)[MetalLayer::H][x][u.y];
             }
         } else {
-            int l = min(u.y, v.y), h = max(u.y, v.y);
+            int l = std::min(u.y, v.y), h = std::max(u.y, v.y);
             for (int y = l; y < h; y++) {
                 res += (*this)[MetalLayer::V][u.x][y];
             }

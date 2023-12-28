@@ -7,169 +7,226 @@ using std::min;
 using std::max;
 using std::vector;
 
-GridGraph::GridGraph(const Design& design, const Parameters& params): libDBU(design.getLibDBU()), parameters(params) {
-    gridlines = design.getGridlines();
-    nLayers = design.getNumLayers();
-    xSize = gridlines[0].size() - 1;
-    ySize = gridlines[1].size() - 1;
+// GridGraph::GridGraph(const Design& design, const Parameters& params): libDBU(design.getLibDBU()), parameters(params) {
+//     gridlines = design.getGridlines();
+//     nLayers = design.getNumLayers();
+//     xSize = gridlines[0].size() - 1;
+//     ySize = gridlines[1].size() - 1;
     
-    gridCenters.resize(2);
-    for (unsigned dimension = 0; dimension <= 1; dimension++) {
-        gridCenters[dimension].resize(gridlines[dimension].size() - 1);
-        for (int gridIndex = 0; gridIndex < gridlines[dimension].size() - 1; gridIndex++) {
-            gridCenters[dimension][gridIndex] = 
-                (gridlines[dimension][gridIndex] + gridlines[dimension][gridIndex + 1]) / 2;
-        }
-    }
+//     gridCenters.resize(2);
+//     for (unsigned dimension = 0; dimension <= 1; dimension++) {
+//         gridCenters[dimension].resize(gridlines[dimension].size() - 1);
+//         for (int gridIndex = 0; gridIndex < gridlines[dimension].size() - 1; gridIndex++) {
+//             gridCenters[dimension][gridIndex] = 
+//                 (gridlines[dimension][gridIndex] + gridlines[dimension][gridIndex + 1]) / 2;
+//         }
+//     }
     
-    m2_pitch = design.getLayer(1).getPitch();
+//     m2_pitch = design.getLayer(1).getPitch();
 
-    layerNames.resize(nLayers);
-    layerDirections.resize(nLayers);
-    layerMinLengths.resize(nLayers);
-    for (int layerIndex = 0; layerIndex < nLayers; layerIndex++) {
-        const auto& layer = design.getLayer(layerIndex);
-        layerNames[layerIndex] = layer.getName();
-        layerDirections[layerIndex] = layer.getDirection();
-        layerMinLengths[layerIndex] = layer.getMinLength();
-    }
+//     layerNames.resize(nLayers);
+//     layerDirections.resize(nLayers);
+//     layerMinLengths.resize(nLayers);
+//     for (int layerIndex = 0; layerIndex < nLayers; layerIndex++) {
+//         const auto& layer = design.getLayer(layerIndex);
+//         layerNames[layerIndex] = layer.getName();
+//         layerDirections[layerIndex] = layer.getDirection();
+//         layerMinLengths[layerIndex] = layer.getMinLength();
+//     }
     
-    unit_length_wire_cost = design.getUnitLengthWireCost();
-    unit_via_cost = design.getUnitViaCost();
-    unit_length_short_costs.resize(nLayers);
-    for (int layerIndex = 0; layerIndex < nLayers; layerIndex++) {
-        unit_length_short_costs[layerIndex] = design.getUnitLengthShortCost(layerIndex);
-    }
+//     unit_length_wire_cost = design.getUnitLengthWireCost();
+//     unit_via_cost = design.getUnitViaCost();
+//     unit_length_short_costs.resize(nLayers);
+//     for (int layerIndex = 0; layerIndex < nLayers; layerIndex++) {
+//         unit_length_short_costs[layerIndex] = design.getUnitLengthShortCost(layerIndex);
+//     }
     
-    // Init grid graph edges
-    vector<vector<int>> gridTracks(nLayers);
+//     // Init grid graph edges
+//     vector<vector<int>> gridTracks(nLayers);
+//     graphEdges.assign(nLayers, vector<vector<GraphEdge>>(xSize, vector<GraphEdge>(ySize)));
+//     for (int layerIndex = 0; layerIndex < nLayers; layerIndex++) {
+//         const MetalLayer& layer = design.getLayer(layerIndex);
+//         const unsigned direction = layer.getDirection();
+        
+//         const int nGrids = gridlines[1 - direction].size() - 1;
+//         gridTracks[layerIndex].resize(nGrids);
+//         for (size_t gridIndex = 0; gridIndex < nGrids; gridIndex++) {
+//             utils::IntervalT<DBU> locRange(gridlines[1 - direction][gridIndex], gridlines[1 - direction][gridIndex + 1]);
+//             auto trackRange = layer.rangeSearchTracks(locRange);
+//             if (trackRange.IsValid()) {
+//                 gridTracks[layerIndex][gridIndex] = trackRange.range() + 1;
+//                 // exclude the track on the higher gridline
+//                 if (gridIndex != nGrids - 1 && layer.getTrackLocation(trackRange.high) == locRange.high) {
+//                     gridTracks[layerIndex][gridIndex]--;
+//                 }
+//             } else {
+//                 gridTracks[layerIndex][gridIndex] = 0;
+//             }
+//         }
+        
+//         // Initialize edges' capacity to the number of tracks
+//         if (direction == MetalLayer::V) {
+//             for (size_t x = 0; x < xSize; x++) {
+//                 CapacityT nTracks = gridTracks[layerIndex][x];
+//                 for (size_t y = 0; y + 1 < ySize; y++) {
+//                     graphEdges[layerIndex][x][y].capacity = nTracks;
+//                 }
+//             }
+//         } else {
+//             for (size_t y = 0; y < ySize; y++) {
+//                 CapacityT nTracks = gridTracks[layerIndex][y];
+//                 for (size_t x = 0; x + 1 < xSize; x++) {
+//                     graphEdges[layerIndex][x][y].capacity = nTracks;
+//                 }
+//             }
+//         }
+//     }
+
+//     // Deduct obstacles usage for layers EXCEPT Metal 1
+//     vector<vector<utils::BoxT<DBU>>> obstacles(nLayers);
+//     design.getAllObstacles(obstacles, true);
+//     for (int layerIndex = 1; layerIndex < nLayers; layerIndex++) {
+//         const MetalLayer& layer = design.getLayer(layerIndex);
+//         unsigned direction = layer.getDirection();
+//         const int nGrids = gridlines[1 - direction].size() - 1;
+//         const int nEdges = gridlines[direction].size() - 2;
+//         DBU minEdgeLength = std::numeric_limits<DBU>::max();
+//         for (int edgeIndex = 0; edgeIndex < nEdges; edgeIndex++) {
+//             minEdgeLength = min(minEdgeLength, gridCenters[direction][edgeIndex + 1] - gridCenters[direction][edgeIndex]);
+//         }
+//         vector<vector<std::shared_ptr<std::pair<utils::BoxT<DBU>, utils::IntervalT<int>>>>> obstaclesInGrid(nGrids); // obstacle indices sorted in track grids
+//         // Sort obstacles in track grids
+//         for (auto& obs : obstacles[layerIndex]) {
+//             DBU width = min(obs.x.range(), obs.y.range());
+//             DBU spacing = layer.getParallelSpacing(width, min(minEdgeLength, obs[direction].range())) + layer.getWidth() / 2 - 1;
+//             utils::PointT<DBU> margin(0, 0);
+//             margin[1 - direction] = spacing;
+//             utils::BoxT<DBU> obsBox(
+//                 obs.x.low  - margin.x, obs.y.low  - margin.y, 
+//                 obs.x.high + margin.x, obs.y.high + margin.y
+//             ); // enlarged obstacle box
+//             utils::IntervalT<int> trackRange = layer.rangeSearchTracks(obsBox[1 - direction]);
+//             std::shared_ptr<std::pair<utils::BoxT<DBU>, utils::IntervalT<int>>> obstacle = 
+//                 std::make_shared<std::pair<utils::BoxT<DBU>, utils::IntervalT<int>>>(obsBox, trackRange);
+//             // Get grid range
+//             utils::IntervalT<int> gridRange = rangeSearchRows(1 - direction, obsBox[1 - direction]);
+//             for (int gridIndex = gridRange.low; gridIndex <= gridRange.high; gridIndex++) {
+//                 obstaclesInGrid[gridIndex].push_back(obstacle);
+//             }
+//         }
+//         // Handle each track grid
+//         utils::IntervalT<int> gridTrackRange;
+//         for (int gridIndex = 0; gridIndex < nGrids; gridIndex++) {
+//             if (gridIndex == 0) {
+//                 gridTrackRange.low = 0;
+//                 gridTrackRange.high = gridTracks[layerIndex][gridIndex] - 1;
+//             } else {
+//                 gridTrackRange.low = gridTrackRange.high + 1;
+//                 gridTrackRange.high += gridTracks[layerIndex][gridIndex];
+//             }
+//             if (!gridTrackRange.IsValid()) continue;
+//             if (obstaclesInGrid[gridIndex].size() == 0) continue;
+//             vector<vector<std::shared_ptr<std::pair<utils::BoxT<DBU>, utils::IntervalT<int>>>>> obstaclesAtEdge(nEdges);
+//             for (auto& obstacle : obstaclesInGrid[gridIndex]) {
+//                 utils::IntervalT<int> gridlineRange = rangeSearchGridlines(direction, obstacle->first[direction]);
+//                 utils::IntervalT<int> edgeRange(max(gridlineRange.low - 2, 0), min(gridlineRange.high, nEdges - 1));
+//                 for (int edgeIndex = edgeRange.low; edgeIndex <= edgeRange.high; edgeIndex++) {
+//                     obstaclesAtEdge[edgeIndex].emplace_back(obstacle);
+//                 }
+//             }
+//             for (int edgeIndex = 0; edgeIndex < nEdges; edgeIndex++) {
+//                 if (obstaclesAtEdge[edgeIndex].size() == 0) continue;
+//                 DBU gridline = gridlines[direction][edgeIndex + 1];
+//                 utils::IntervalT<DBU> edgeInterval(gridCenters[direction][edgeIndex], gridCenters[direction][edgeIndex + 1]);
+//                 // Update cpacity
+//                 vector<utils::IntervalT<DBU>> usableIntervals(
+//                     gridTrackRange.range() + 1, edgeInterval
+//                 );
+//                 for (auto& obstacle : obstaclesAtEdge[edgeIndex]) {
+//                     utils::IntervalT<int> affectedTrackRange = gridTrackRange.IntersectWith(obstacle->second);
+//                     if (!affectedTrackRange.IsValid()) continue;
+//                     for (int trackIndex = affectedTrackRange.low; trackIndex <= affectedTrackRange.high; trackIndex++) {
+//                         int tIdx = trackIndex - gridTrackRange.low;
+//                         if (obstacle->first[direction].low <= gridline && obstacle->first[direction].high >= gridline) {
+//                             // Completely blocked 
+//                             usableIntervals[tIdx] = {gridline, gridline};
+//                         } else if (obstacle->first[direction].high < gridline) {
+//                             usableIntervals[tIdx].low = max(usableIntervals[tIdx].low, obstacle->first[direction].high);
+//                         } else if (obstacle->first[direction].low > gridline) {
+//                             usableIntervals[tIdx].high = min(usableIntervals[tIdx].high, obstacle->first[direction].low);
+//                         }
+//                         // if (obstacle->first[direction].HasStrictIntersectWith(usableIntervals[tIdx])) {
+//                         //     usableIntervals[tIdx] = {gridline, gridline};
+//                         // }
+//                     }
+//                 }
+//                 CapacityT capacity = 0;
+//                 for (int tIdx = 0; tIdx < usableIntervals.size(); tIdx++) {
+//                     capacity += (CapacityT)usableIntervals[tIdx].range() / edgeInterval.range();
+//                 }
+//                 if (direction == MetalLayer::V) {
+//                     graphEdges[layerIndex][gridIndex][edgeIndex].capacity = capacity;
+//                 } else {
+//                     graphEdges[layerIndex][edgeIndex][gridIndex].capacity = capacity;
+//                 }
+//             }
+//         }
+//     }
+// }
+
+GridGraph::GridGraph(const ISPD24Parser &parser, const Parameters &params)
+    : parameters(params)
+{
+    nLayers = parser.n_layers;
+    xSize = parser.size_x;
+    ySize = parser.size_y;
+
+    layerNames = parser.layer_names;
+    layerDirections = parser.layer_directions;
+    layerMinLengths = parser.layer_min_lengths;
+
+    unit_length_wire_cost = parser.unit_length_wire_cost;
+    unit_via_cost = parser.unit_via_cost;
+    unit_length_short_costs = parser.unit_length_short_costs;
+
+    // horizontal gridlines
+    std::vector<DBU> hGridlines;
+    std::vector<DBU> hGridCenters;
+    hGridlines.push_back(0);
+    for(int x = 0; x < xSize; x++)
+    {
+        hGridlines.push_back(hGridlines[x] + parser.horizontal_gcell_edge_lengths[x]);
+        hGridCenters.push_back((hGridlines[x] + hGridlines[x+1]) / 2);
+    }
+    // vertical gridlines
+    std::vector<DBU> vGridlines;
+    std::vector<DBU> vGridCenters;
+    vGridlines.push_back(0);
+    for(int x = 0; x < xSize; x++)
+    {
+        vGridlines.push_back(vGridlines[x] + parser.vertical_gcell_edge_lengths[x]);
+        vGridCenters.push_back((vGridlines[x] + hGridlines[x+1]) / 2);
+    }
+    // fill gridlines
+    gridlines.push_back(std::move(hGridlines));
+    gridlines.push_back(std::move(vGridlines));
+    gridCenters.push_back(std::move(hGridCenters));
+    gridCenters.push_back(std::move(vGridCenters));
+
     graphEdges.assign(nLayers, vector<vector<GraphEdge>>(xSize, vector<GraphEdge>(ySize)));
-    for (int layerIndex = 0; layerIndex < nLayers; layerIndex++) {
-        const MetalLayer& layer = design.getLayer(layerIndex);
-        const unsigned direction = layer.getDirection();
-        
-        const int nGrids = gridlines[1 - direction].size() - 1;
-        gridTracks[layerIndex].resize(nGrids);
-        for (size_t gridIndex = 0; gridIndex < nGrids; gridIndex++) {
-            utils::IntervalT<DBU> locRange(gridlines[1 - direction][gridIndex], gridlines[1 - direction][gridIndex + 1]);
-            auto trackRange = layer.rangeSearchTracks(locRange);
-            if (trackRange.IsValid()) {
-                gridTracks[layerIndex][gridIndex] = trackRange.range() + 1;
-                // exclude the track on the higher gridline
-                if (gridIndex != nGrids - 1 && layer.getTrackLocation(trackRange.high) == locRange.high) {
-                    gridTracks[layerIndex][gridIndex]--;
-                }
-            } else {
-                gridTracks[layerIndex][gridIndex] = 0;
-            }
+    for(int layerIdx = 0; layerIdx < nLayers; layerIdx++)
+    {
+        if(layerDirections[layerIdx]) // horizontal
+        {
+            for(int y = 0; y < ySize; y++)
+                for(int x = 0; x < xSize - 1; x++)
+                    graphEdges[layerIdx][x][y].capacity = parser.gcell_edge_capaicty[layerIdx][y][x+1];
         }
-        
-        // Initialize edges' capacity to the number of tracks
-        if (direction == MetalLayer::V) {
-            for (size_t x = 0; x < xSize; x++) {
-                CapacityT nTracks = gridTracks[layerIndex][x];
-                for (size_t y = 0; y + 1 < ySize; y++) {
-                    graphEdges[layerIndex][x][y].capacity = nTracks;
-                }
-            }
-        } else {
-            for (size_t y = 0; y < ySize; y++) {
-                CapacityT nTracks = gridTracks[layerIndex][y];
-                for (size_t x = 0; x + 1 < xSize; x++) {
-                    graphEdges[layerIndex][x][y].capacity = nTracks;
-                }
-            }
-        }
-    }
-
-    // Deduct obstacles usage for layers EXCEPT Metal 1
-    vector<vector<utils::BoxT<DBU>>> obstacles(nLayers);
-    design.getAllObstacles(obstacles, true);
-    for (int layerIndex = 1; layerIndex < nLayers; layerIndex++) {
-        const MetalLayer& layer = design.getLayer(layerIndex);
-        unsigned direction = layer.getDirection();
-        const int nGrids = gridlines[1 - direction].size() - 1;
-        const int nEdges = gridlines[direction].size() - 2;
-        DBU minEdgeLength = std::numeric_limits<DBU>::max();
-        for (int edgeIndex = 0; edgeIndex < nEdges; edgeIndex++) {
-            minEdgeLength = min(minEdgeLength, gridCenters[direction][edgeIndex + 1] - gridCenters[direction][edgeIndex]);
-        }
-        vector<vector<std::shared_ptr<std::pair<utils::BoxT<DBU>, utils::IntervalT<int>>>>> obstaclesInGrid(nGrids); // obstacle indices sorted in track grids
-        // Sort obstacles in track grids
-        for (auto& obs : obstacles[layerIndex]) {
-            DBU width = min(obs.x.range(), obs.y.range());
-            DBU spacing = layer.getParallelSpacing(width, min(minEdgeLength, obs[direction].range())) + layer.getWidth() / 2 - 1;
-            utils::PointT<DBU> margin(0, 0);
-            margin[1 - direction] = spacing;
-            utils::BoxT<DBU> obsBox(
-                obs.x.low  - margin.x, obs.y.low  - margin.y, 
-                obs.x.high + margin.x, obs.y.high + margin.y
-            ); // enlarged obstacle box
-            utils::IntervalT<int> trackRange = layer.rangeSearchTracks(obsBox[1 - direction]);
-            std::shared_ptr<std::pair<utils::BoxT<DBU>, utils::IntervalT<int>>> obstacle = 
-                std::make_shared<std::pair<utils::BoxT<DBU>, utils::IntervalT<int>>>(obsBox, trackRange);
-            // Get grid range
-            utils::IntervalT<int> gridRange = rangeSearchRows(1 - direction, obsBox[1 - direction]);
-            for (int gridIndex = gridRange.low; gridIndex <= gridRange.high; gridIndex++) {
-                obstaclesInGrid[gridIndex].push_back(obstacle);
-            }
-        }
-        // Handle each track grid
-        utils::IntervalT<int> gridTrackRange;
-        for (int gridIndex = 0; gridIndex < nGrids; gridIndex++) {
-            if (gridIndex == 0) {
-                gridTrackRange.low = 0;
-                gridTrackRange.high = gridTracks[layerIndex][gridIndex] - 1;
-            } else {
-                gridTrackRange.low = gridTrackRange.high + 1;
-                gridTrackRange.high += gridTracks[layerIndex][gridIndex];
-            }
-            if (!gridTrackRange.IsValid()) continue;
-            if (obstaclesInGrid[gridIndex].size() == 0) continue;
-            vector<vector<std::shared_ptr<std::pair<utils::BoxT<DBU>, utils::IntervalT<int>>>>> obstaclesAtEdge(nEdges);
-            for (auto& obstacle : obstaclesInGrid[gridIndex]) {
-                utils::IntervalT<int> gridlineRange = rangeSearchGridlines(direction, obstacle->first[direction]);
-                utils::IntervalT<int> edgeRange(max(gridlineRange.low - 2, 0), min(gridlineRange.high, nEdges - 1));
-                for (int edgeIndex = edgeRange.low; edgeIndex <= edgeRange.high; edgeIndex++) {
-                    obstaclesAtEdge[edgeIndex].emplace_back(obstacle);
-                }
-            }
-            for (int edgeIndex = 0; edgeIndex < nEdges; edgeIndex++) {
-                if (obstaclesAtEdge[edgeIndex].size() == 0) continue;
-                DBU gridline = gridlines[direction][edgeIndex + 1];
-                utils::IntervalT<DBU> edgeInterval(gridCenters[direction][edgeIndex], gridCenters[direction][edgeIndex + 1]);
-                // Update cpacity
-                vector<utils::IntervalT<DBU>> usableIntervals(
-                    gridTrackRange.range() + 1, edgeInterval
-                );
-                for (auto& obstacle : obstaclesAtEdge[edgeIndex]) {
-                    utils::IntervalT<int> affectedTrackRange = gridTrackRange.IntersectWith(obstacle->second);
-                    if (!affectedTrackRange.IsValid()) continue;
-                    for (int trackIndex = affectedTrackRange.low; trackIndex <= affectedTrackRange.high; trackIndex++) {
-                        int tIdx = trackIndex - gridTrackRange.low;
-                        if (obstacle->first[direction].low <= gridline && obstacle->first[direction].high >= gridline) {
-                            // Completely blocked 
-                            usableIntervals[tIdx] = {gridline, gridline};
-                        } else if (obstacle->first[direction].high < gridline) {
-                            usableIntervals[tIdx].low = max(usableIntervals[tIdx].low, obstacle->first[direction].high);
-                        } else if (obstacle->first[direction].low > gridline) {
-                            usableIntervals[tIdx].high = min(usableIntervals[tIdx].high, obstacle->first[direction].low);
-                        }
-                        // if (obstacle->first[direction].HasStrictIntersectWith(usableIntervals[tIdx])) {
-                        //     usableIntervals[tIdx] = {gridline, gridline};
-                        // }
-                    }
-                }
-                CapacityT capacity = 0;
-                for (int tIdx = 0; tIdx < usableIntervals.size(); tIdx++) {
-                    capacity += (CapacityT)usableIntervals[tIdx].range() / edgeInterval.range();
-                }
-                if (direction == MetalLayer::V) {
-                    graphEdges[layerIndex][gridIndex][edgeIndex].capacity = capacity;
-                } else {
-                    graphEdges[layerIndex][edgeIndex][gridIndex].capacity = capacity;
-                }
-            }
+        else // vertical
+        {
+            for(int x = 0; x < xSize; x++)
+                for(int y = 0; y < ySize - 1; y++)
+                    graphEdges[layerIdx][x][y].capacity = parser.gcell_edge_capaicty[layerIdx][y+1][x];
         }
     }
 }

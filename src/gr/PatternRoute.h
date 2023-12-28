@@ -1,6 +1,8 @@
 #pragma once
+#include <flute.h>
 #include "GRNet.h"
-#include "flute.h"
+#include "GridGraph.h"
+#include "../utils/utils.h"
 
 extern "C" {
 void readLUT();

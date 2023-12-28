@@ -1,5 +1,6 @@
 #include "global.h"
-#include "obj/Design.h"
+#include "obj/ISPD24Parser.h"
+#include "utils/utils.h"
 #include "gr/GlobalRouter.h"
 
 int main(int argc, const char *argv[])
@@ -10,11 +11,11 @@ int main(int argc, const char *argv[])
     // Parse parameters
     Parameters parameters(argc, argv);
 
-    // Read LEF/DEF
-    Design design(parameters);
+    // Read CAP/NET
+    ISPD24Parser parser(parameters);
 
     // Global router
-    GlobalRouter globalRouter(design, parameters);
+    GlobalRouter globalRouter(parser, parameters);
     globalRouter.route();
     globalRouter.write();
 

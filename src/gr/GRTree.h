@@ -1,6 +1,6 @@
 #pragma once
-#include "../utils/utils.h"
 #include <functional>
+#include "../utils/utils.h"
 
 class GRPoint: public utils::PointT<int> {
 public:

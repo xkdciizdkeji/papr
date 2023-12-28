@@ -27,7 +27,6 @@ set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_EXTENSIONS OFF)
 
-set(PATH_RSYN ${CMAKE_CURRENT_SOURCE_DIR}/rsyn)
 set(PATH_FLUTE ${CMAKE_CURRENT_SOURCE_DIR}/flute)
 set(PATH_CUGR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
@@ -54,7 +53,6 @@ add_executable(route ${CUGR_SOURCE_FILES} ${CUGR_HEADER_FILE})
 ##################
 # Subdirectories #
 ##################
-add_subdirectory(${PATH_RSYN})
 add_subdirectory(${PATH_FLUTE})
 
 #######################
@@ -81,7 +79,6 @@ endif()
 ##################
 # Link Libraries #
 ##################
-target_link_libraries(route PRIVATE rsyn)
 target_link_libraries(route PRIVATE flute)
 
 add_custom_command(

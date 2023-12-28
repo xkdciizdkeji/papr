@@ -7,15 +7,15 @@
 #include <iomanip>
 
 using std::vector;
+using std::min;
+using std::max;
 
-GlobalRouter::GlobalRouter(const Design& design, const Parameters& params): 
-    gridGraph(design, params), parameters(params) {
-    // Instantiate the global routing netlist
-    const vector<Net>& baseNets = design.getAllNets();
-    nets.reserve(baseNets.size());
-    for (const Net& baseNet : baseNets) {
-        nets.emplace_back(baseNet, design, gridGraph);
-    }
+GlobalRouter::GlobalRouter(const ISPD24Parser& parser, const Parameters& params)
+    : gridGraph(parser, params), parameters(params)
+{
+    nets.reserve(parser.net_names.size());
+    for(int i = 0; i < parser.net_names.size(); i++)
+        nets.emplace_back(i, parser.net_names[i], parser.net_access_points[i]);
 }
 
 void GlobalRouter::route() {
@@ -326,7 +326,7 @@ void GlobalRouter::printStatistics() const {
         }
     }
     
-    log() << "wire length (metric):  " << wireLength / gridGraph.getM2Pitch() << std::endl;
+    log() << "wire length (metric):  " << wireLength << std::endl;
     log() << "total via count:       " << viaCount << std::endl;
     log() << "total wire overflow:   " << (int)overflow << std::endl;
     logeol();

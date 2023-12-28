@@ -1,11 +1,11 @@
 #pragma once
-#include "../obj/Design.h"
 #include "GridGraph.h"
 #include "GRNet.h"
+#include "../obj/ISPD24Parser.h"
 
 class GlobalRouter {
 public:
-    GlobalRouter(const Design& design, const Parameters& params);
+    GlobalRouter(const ISPD24Parser& parser, const Parameters& params);
     void route();
     void write(std::string guide_file = "");
     
