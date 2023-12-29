@@ -16,6 +16,8 @@ GlobalRouter::GlobalRouter(const ISPD24Parser& parser, const Parameters& params)
     nets.reserve(parser.net_names.size());
     for(int i = 0; i < parser.net_names.size(); i++)
         nets.emplace_back(i, parser.net_names[i], parser.net_access_points[i]);
+    unit_length_wire_cost = parser.unit_length_wire_cost;
+    unit_via_cost = parser.unit_via_cost;
 }
 
 void GlobalRouter::route() {
@@ -326,9 +328,21 @@ void GlobalRouter::printStatistics() const {
         }
     }
     
+    double via_cost_scale = 1.0;
+    double overflow_cost_scale = 1.0;
+    double wireCost = wireLength * unit_length_wire_cost;
+    double viaCost = viaCount * unit_via_cost * via_cost_scale;
+    double overflowCost = overflow * overflow_cost_scale;
+    double totalCost = wireCost + viaCost + overflowCost;
+    
+    // log() << "wire length (metric):  " << wireLength / gridGraph.getM2Pitch() << std::endl;
     log() << "wire length (metric):  " << wireLength << std::endl;
     log() << "total via count:       " << viaCount << std::endl;
     log() << "total wire overflow:   " << (int)overflow << std::endl;
+    log() << "wire cost:             " << wireCost << std::endl;
+    log() << "via cost:              " << viaCost << std::endl;
+    log() << "overflow cost:         " << overflowCost << std::endl;
+    log() << "total cost:            " << totalCost << std::endl;
     logeol();
 
     log() << "min resource: " << minResource << std::endl;

@@ -16,6 +16,10 @@ private:
     
     int areaOfPinPatches;
     int areaOfWirePatches;
+
+    // for evaluation
+    CostT unit_length_wire_cost;
+    CostT unit_via_cost;
     
     void sortNetIndices(std::vector<int>& netIndices) const;
     void getGuides(const GRNet& net, std::vector<std::pair<int, utils::BoxT<int>>>& guides) ;
