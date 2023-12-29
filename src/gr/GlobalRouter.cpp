@@ -5,6 +5,8 @@
 #include <chrono>
 #include <fstream>
 #include <iomanip>
+#include "GridGraph.h"
+#include "../obj/ISPD24Parser.h"
 
 using std::vector;
 using std::min;
@@ -18,6 +20,7 @@ GlobalRouter::GlobalRouter(const ISPD24Parser& parser, const Parameters& params)
         nets.emplace_back(i, parser.net_names[i], parser.net_access_points[i]);
     unit_length_wire_cost = parser.unit_length_wire_cost;
     unit_via_cost = parser.unit_via_cost;
+    unit_length_short_costs = parser.unit_length_short_costs;
 }
 
 void GlobalRouter::route() {
@@ -310,19 +313,44 @@ void GlobalRouter::printStatistics() const {
 
     CapacityT minResource = std::numeric_limits<CapacityT>::max();
     GRPoint bottleneck(-1, -1, -1);
-    for (int layerIndex = parameters.min_routing_layer; layerIndex < gridGraph.getNumLayers(); layerIndex++) {
-        unsigned direction = gridGraph.getLayerDirection(layerIndex);
-        for (int x = 0; x < gridGraph.getSize(0) - 1 + direction; x++) {
-            for (int y = 0; y < gridGraph.getSize(1) - direction; y++) {
-                CapacityT resource = gridGraph.getEdge(layerIndex, x, y).getResource();
-                if (resource < minResource) {
-                    minResource = resource;
-                    bottleneck = {layerIndex, x, y};
+    // for (int layerIndex = parameters.min_routing_layer; layerIndex < gridGraph.getNumLayers(); layerIndex++) {
+    //     unsigned direction = gridGraph.getLayerDirection(layerIndex);
+    //     for (int x = 0; x < gridGraph.getSize(0) - 1 + direction; x++) {
+    //         for (int y = 0; y < gridGraph.getSize(1) - direction; y++) {
+    //             CapacityT resource = gridGraph.getEdge(layerIndex, x, y).getResource();
+    //             if (resource < minResource) {
+    //                 minResource = resource;
+    //                 bottleneck = {layerIndex, x, y};
+    //             }
+    //             CapacityT usage = wireUsage[layerIndex][x][y];
+    //             CapacityT capacity = max(gridGraph.getEdge(layerIndex, x, y).capacity, 0.0);
+    //             if (usage > 0.0 && usage > capacity) {
+    //                 overflow += usage - capacity ;
+    //             }
+    //         }
+    //     }
+    // }
+
+        for (int l = parameters.min_routing_layer; l < gridGraph.getNumLayers(); l++) {
+        int direction = gridGraph.getLayerDirection(l);
+        if (direction == 0) { // horizontal
+            for (int x=0; x<gridGraph.getSize(0)-1; ++x) {
+                for (int y=0; y<gridGraph.getSize(1); ++y) {
+                    CapacityT usage = wireUsage[l][x][y];
+                    CapacityT capacity = max(gridGraph.getEdge(l, x, y).capacity, 0.0);
+                    if (usage > 0.0 && usage > capacity) {
+                        overflow = overflow + unit_length_short_costs[l] * (usage - capacity) * gridGraph.getEdgeLength(direction, x);
+                    }
                 }
-                CapacityT usage = wireUsage[layerIndex][x][y];
-                CapacityT capacity = max(gridGraph.getEdge(layerIndex, x, y).capacity, 0.0);
-                if (usage > 0.0 && usage > capacity) {
-                    overflow += usage - capacity;
+            }
+        } else { // vertical
+            for (int x=0; x<gridGraph.getSize(0); ++x) {
+                for (int y=0; y<gridGraph.getSize(1)-1; ++y) {
+                    CapacityT usage = wireUsage[l][x][y];
+                    CapacityT capacity = max(gridGraph.getEdge(l, x, y).capacity, 0.0);
+                    if (usage > 0.0 && usage > capacity) {
+                        overflow = overflow + unit_length_short_costs[l] * (usage - capacity) * gridGraph.getEdgeLength(direction, x);
+                    }
                 }
             }
         }

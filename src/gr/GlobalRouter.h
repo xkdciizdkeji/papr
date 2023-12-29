@@ -20,6 +20,7 @@ private:
     // for evaluation
     CostT unit_length_wire_cost;
     CostT unit_via_cost;
+    std::vector<CostT> unit_length_short_costs;
     
     void sortNetIndices(std::vector<int>& netIndices) const;
     void getGuides(const GRNet& net, std::vector<std::pair<int, utils::BoxT<int>>>& guides) ;
