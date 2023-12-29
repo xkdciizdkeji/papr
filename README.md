@@ -1,19 +1,29 @@
 ## 1. How to build
-**build on windows10**
+
+**Step 1:** Download the source code. For example,
 ```bash
-cmake -B build -DCMAKE_TOOLCHAIN_FILE=C:/DevTools/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows
-cmake --build build --config Release
+$ git clone -b ispd24-lite https://github.com/flwave/gr_gpu.git
 ```
 
-**build on linux/wsl**
+**Step 2:** build by cmake
 ```bash
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build
+$ cd ./gr_gpu/
+$ cmake -B build
+$ cmake --build build
 ```
-
+**Step 2":** build by cmake (enable cuda)
+```bash
+$ cd ./gr_gpu/
+$ cmake -B build -DENABLE_CUDA=ON
+$ cmake --build build
+```
+**Step 3:** use the executable file
+```bash
+$ cd ./build/
+$ ./route [path_to_cap_file] [path_to_net_file] [path_to_output_file]
+```
 ## 2. Dependencies
 
-* A C/C++ compiler with support for C++17 or higher.
+* A C/C++ compiler with support for C++17.
 * [CMake](https://cmake.org/) (version >= 3.18)
-* [Boost](https://www.boost.org/) (version >= 1.58)
-* [Rsyn](https://github.com/RsynTeam/rsyn-x) (a trimmed version is used, already added under folder `rsyn`)
+* [CUDA](https://developer.nvidia.com/cuda-toolkit) (optional)

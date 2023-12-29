@@ -1,4 +1,5 @@
 #pragma once
+#ifdef ENABLE_CUDA
 #include "GRNet.h"
 #include "GridGraph.h"
 #include "PatternRoute.h"
@@ -65,3 +66,4 @@ private:
   float *devDist;
   int *devPrev;
 };
+#endif

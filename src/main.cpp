@@ -17,7 +17,7 @@ int main(int argc, const char *argv[])
     // Global router
     GlobalRouter globalRouter(parser, parameters);
     globalRouter.route();
-    //globalRouter.write();
+    globalRouter.write();
 
     logeol();
     log() << "Terminated." << std::endl;

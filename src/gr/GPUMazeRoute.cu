@@ -1,3 +1,4 @@
+#ifdef ENABLE_CUDA
 #include "GPUMazeRoute.h"
 #include <cuda_runtime.h>
 #include "../utils/helper_cuda.h"
@@ -959,3 +960,4 @@ std::vector<int> GPUMazeRoute::selectAccessPoints(const GRNet &net) const
   }
   return std::vector<int>(selectedAccessPoints.begin(), selectedAccessPoints.end());
 }
+#endif

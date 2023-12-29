@@ -86,9 +86,10 @@ void GlobalRouter::route() {
     
     t2 = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t).count();
     t = std::chrono::high_resolution_clock::now();
-    
-    // Stage 3: maze routing on sparsified routing graph
-     n3 = netIndices.size();
+
+    // Stage 3: maze routing
+    n3 = netIndices.size();
+#ifndef ENABLE_CUDA
      if (netIndices.size() > 0) {
          log() << "stage 3: maze routing on sparsified routing graph" << std::endl;
          for (const int netIndex : netIndices) {
@@ -127,29 +128,28 @@ void GlobalRouter::route() {
          log() << netIndices.size() << " / " << nets.size() << " nets have overflows." << std::endl;
          logeol();
      }
-
-    // Stage 3: GPU Maze Routing
-    //n3 = netIndices.size();
-    //if(netIndices.size() > 0) {
-    //    std::vector<bool> isGamerRoutedNet(nets.size(), false);
-    //    log() << "stage 3: gpu maze routing\n";
-    //    GPUMazeRoute gamer(nets, gridGraph, parameters);
-    //    log() << "gamer init. overflow net: " << netIndices.size() << "/" << nets.size() << "\n";
-    //    for(int iter = 1; iter <= 3 && netIndices.size() > 0; iter++) {
-    //        gamer.route(netIndices, 3 + iter, 10 * iter);
-    //        for(auto netId : netIndices)
-    //            isGamerRoutedNet[netId] = true;
-    //        gamer.getOverflowNetIndices(netIndices);
-    //        log() << "gamer iter " << iter << " overflow net: " << netIndices.size() << "/" << nets.size() << "\n";
-    //    }
-    //    netIndices.clear();
-    //    for(int netId = 0; netId < nets.size(); netId++)
-    //        if(isGamerRoutedNet[netId])
-    //            netIndices.push_back(netId);
-    //    log() << "commiting gamer's result ...\n";
-    //    gamer.commit(netIndices);
-    //    log() << "commiting done\n";
-    //}
+#else
+    if(netIndices.size() > 0) {
+       std::vector<bool> isGamerRoutedNet(nets.size(), false);
+       log() << "stage 3: gpu maze routing\n";
+       GPUMazeRoute gamer(nets, gridGraph, parameters);
+       log() << "gamer init. overflow net: " << netIndices.size() << "/" << nets.size() << "\n";
+       for(int iter = 1; iter <= 3 && netIndices.size() > 0; iter++) {
+           gamer.route(netIndices, 3 + iter, 10 * iter);
+           for(auto netId : netIndices)
+               isGamerRoutedNet[netId] = true;
+           gamer.getOverflowNetIndices(netIndices);
+           log() << "gamer iter " << iter << " overflow net: " << netIndices.size() << "/" << nets.size() << "\n";
+       }
+       netIndices.clear();
+       for(int netId = 0; netId < nets.size(); netId++)
+           if(isGamerRoutedNet[netId])
+               netIndices.push_back(netId);
+       log() << "commiting gamer's result ...\n";
+       gamer.commit(netIndices);
+       log() << "commiting done\n";
+    }
+#endif
     t3 = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t).count();
     t = std::chrono::high_resolution_clock::now();
     
