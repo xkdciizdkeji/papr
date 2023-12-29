@@ -378,7 +378,7 @@ void GlobalRouter::printStatistics() const {
     log() << "wire cost:                " << wireCost << std::endl;
     log() << "via cost:                 " << viaCost << std::endl;
     log() << "overflow cost:            " << overflowCost << std::endl;
-    log() << "total cost(ispd24 socre): " << totalCost << std::endl;
+    log() << "total cost(ispd24 score): " << totalCost << std::endl;
     logeol();
 
     // log() << "min resource: " << minResource << std::endl;
