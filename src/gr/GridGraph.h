@@ -31,13 +31,13 @@ public:
         return ((uint64_t)point.layerIdx * xSize + point.x) * ySize + point.y;
     };
     inline uint64_t hashCell(const int x, const int y) const { return (uint64_t)x * ySize + y; }
-    inline DBU getGridline(const unsigned dimension, const int index) const { return gridlines[dimension][index]; }
-    utils::BoxT<DBU> getCellBox(utils::PointT<int> point) const;
-    utils::BoxT<int> rangeSearchCells(const utils::BoxT<DBU>& box) const;
+    // inline DBU getGridline(const unsigned dimension, const int index) const { return gridlines[dimension][index]; }
+    //utils::BoxT<DBU> getCellBox(utils::PointT<int> point) const;
+    //utils::BoxT<int> rangeSearchCells(const utils::BoxT<DBU>& box) const;
     inline GraphEdge getEdge(const int layerIndex, const int x, const int y) const {return graphEdges[layerIndex][x][y]; }
     
     // Costs
-    DBU getEdgeLength(unsigned direction, unsigned edgeIndex) const;
+    DBU getEdgeLength(unsigned direction, unsigned edgeIndex) const { return edgeLengths[direction][edgeIndex]; }
     CostT getWireCost(const int layerIndex, const utils::PointT<int> u, const utils::PointT<int> v) const;
     CostT getViaCost(const int layerIndex, const utils::PointT<int> loc) const;
     inline CostT getUnitViaCost() const { return unit_via_cost; }
@@ -69,8 +69,9 @@ private:
     unsigned nLayers;
     unsigned xSize;
     unsigned ySize;
-    std::vector<std::vector<DBU>> gridlines;
-    std::vector<std::vector<DBU>> gridCenters;
+    // std::vector<std::vector<DBU>> gridlines;
+    // std::vector<std::vector<DBU>> gridCenters;
+    std::vector<std::vector<DBU>> edgeLengths;
     std::vector<std::string> layerNames;
     std::vector<unsigned> layerDirections;
     std::vector<DBU> layerMinLengths;
@@ -86,9 +87,9 @@ private:
     // gridEdges[l][x][y] stores the edge {(l, x, y), (l, x+1, y)} or {(l, x, y), (l, x, y+1)}
     // depending on the routing direction of the layer
     
-    utils::IntervalT<int> rangeSearchGridlines(const unsigned dimension, const utils::IntervalT<DBU>& locInterval) const;
+    // utils::IntervalT<int> rangeSearchGridlines(const unsigned dimension, const utils::IntervalT<DBU>& locInterval) const;
     // Find the gridlines within [locInterval.low, locInterval.high]
-    utils::IntervalT<int> rangeSearchRows(const unsigned dimension, const utils::IntervalT<DBU>& locInterval) const;
+    // utils::IntervalT<int> rangeSearchRows(const unsigned dimension, const utils::IntervalT<DBU>& locInterval) const;
     // Find the rows/columns overlapping with [locInterval.low, locInterval.high]
     
     inline double logistic(const CapacityT& input, const double slope) const;

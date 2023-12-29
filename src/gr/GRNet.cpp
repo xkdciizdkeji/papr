@@ -36,7 +36,7 @@ GRNet::GRNet(int _index, const std::string &_name, const std::vector<std::vector
     : index(_index), name(_name)
 {
     pinAccessPoints.resize(_pinAccessPoints.size());
-    for(int i = 0; i , pinAccessPoints.size(); i++)
+    for(int i = 0; i < pinAccessPoints.size(); i++)
     {
         pinAccessPoints[i].reserve(_pinAccessPoints[i].size());
         for(auto [x, y, z] : _pinAccessPoints[i])

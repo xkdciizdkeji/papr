@@ -88,68 +88,68 @@ void GlobalRouter::route() {
     t = std::chrono::high_resolution_clock::now();
     
     // Stage 3: maze routing on sparsified routing graph
-    // n3 = netIndices.size();
-    // if (netIndices.size() > 0) {
-    //     log() << "stage 3: maze routing on sparsified routing graph" << std::endl;
-    //     for (const int netIndex : netIndices) {
-    //         GRNet& net = nets[netIndex];
-    //         gridGraph.commitTree(net.getRoutingTree(), true);
-    //     }
-    //     GridGraphView<CostT> wireCostView;
-    //     gridGraph.extractWireCostView(wireCostView);
-    //     sortNetIndices(netIndices);
-    //     SparseGrid grid(10, 10, 0, 0);
-    //     for (const int netIndex : netIndices) {
-    //         GRNet& net = nets[netIndex];
-    //         // gridGraph.commitTree(net.getRoutingTree(), true);
-    //         // gridGraph.updateWireCostView(wireCostView, net.getRoutingTree());
-    //         MazeRoute mazeRoute(net, gridGraph, parameters);
-    //         mazeRoute.constructSparsifiedGraph(wireCostView, grid);
-    //         mazeRoute.run();
-    //         std::shared_ptr<SteinerTreeNode> tree = mazeRoute.getSteinerTree();
-    //         assert(tree != nullptr);
+     n3 = netIndices.size();
+     if (netIndices.size() > 0) {
+         log() << "stage 3: maze routing on sparsified routing graph" << std::endl;
+         for (const int netIndex : netIndices) {
+             GRNet& net = nets[netIndex];
+             gridGraph.commitTree(net.getRoutingTree(), true);
+         }
+         GridGraphView<CostT> wireCostView;
+         gridGraph.extractWireCostView(wireCostView);
+         sortNetIndices(netIndices);
+         SparseGrid grid(10, 10, 0, 0);
+         for (const int netIndex : netIndices) {
+             GRNet& net = nets[netIndex];
+             // gridGraph.commitTree(net.getRoutingTree(), true);
+             // gridGraph.updateWireCostView(wireCostView, net.getRoutingTree());
+             MazeRoute mazeRoute(net, gridGraph, parameters);
+             mazeRoute.constructSparsifiedGraph(wireCostView, grid);
+             mazeRoute.run();
+             std::shared_ptr<SteinerTreeNode> tree = mazeRoute.getSteinerTree();
+             assert(tree != nullptr);
             
-    //         PatternRoute patternRoute(net, gridGraph, parameters);
-    //         patternRoute.setSteinerTree(tree);
-    //         patternRoute.constructRoutingDAG();
-    //         patternRoute.run();
+             PatternRoute patternRoute(net, gridGraph, parameters);
+             patternRoute.setSteinerTree(tree);
+             patternRoute.constructRoutingDAG();
+             patternRoute.run();
             
-    //         gridGraph.commitTree(net.getRoutingTree());
-    //         gridGraph.updateWireCostView(wireCostView, net.getRoutingTree());
-    //         grid.step();
-    //     }
-    //     netIndices.clear();
-    //     for (const auto& net : nets) {
-    //         if (gridGraph.checkOverflow(net.getRoutingTree()) > 0) {
-    //             netIndices.push_back(net.getIndex());
-    //         }
-    //     }
-    //     log() << netIndices.size() << " / " << nets.size() << " nets have overflows." << std::endl;
-    //     logeol();
-    // }
+             gridGraph.commitTree(net.getRoutingTree());
+             gridGraph.updateWireCostView(wireCostView, net.getRoutingTree());
+             grid.step();
+         }
+         netIndices.clear();
+         for (const auto& net : nets) {
+             if (gridGraph.checkOverflow(net.getRoutingTree()) > 0) {
+                 netIndices.push_back(net.getIndex());
+             }
+         }
+         log() << netIndices.size() << " / " << nets.size() << " nets have overflows." << std::endl;
+         logeol();
+     }
 
     // Stage 3: GPU Maze Routing
-    n3 = netIndices.size();
-    if(netIndices.size() > 0) {
-        std::vector<bool> isGamerRoutedNet(nets.size(), false);
-        log() << "stage 3: gpu maze routing\n";
-        GPUMazeRoute gamer(nets, gridGraph, parameters);
-        log() << "gamer init. overflow net: " << netIndices.size() << "/" << nets.size() << "\n";
-        for(int iter = 1; iter <= 3 && netIndices.size() > 0; iter++) {
-            gamer.route(netIndices, 3 + iter, 10 * iter);
-            for(auto netId : netIndices)
-                isGamerRoutedNet[netId] = true;
-            gamer.getOverflowNetIndices(netIndices);
-            log() << "gamer iter " << iter << " overflow net: " << netIndices.size() << "/" << nets.size() << "\n";
-        }
-        netIndices.clear();
-        for(int netId = 0; netId < nets.size(); netId++)
-            if(isGamerRoutedNet[netId])
-                netIndices.push_back(netId);
-        log() << "commiting gamer's result ...\n";
-        gamer.commit(netIndices);
-        log() << "commiting done\n";
-    }
+    //n3 = netIndices.size();
+    //if(netIndices.size() > 0) {
+    //    std::vector<bool> isGamerRoutedNet(nets.size(), false);
+    //    log() << "stage 3: gpu maze routing\n";
+    //    GPUMazeRoute gamer(nets, gridGraph, parameters);
+    //    log() << "gamer init. overflow net: " << netIndices.size() << "/" << nets.size() << "\n";
+    //    for(int iter = 1; iter <= 3 && netIndices.size() > 0; iter++) {
+    //        gamer.route(netIndices, 3 + iter, 10 * iter);
+    //        for(auto netId : netIndices)
+    //            isGamerRoutedNet[netId] = true;
+    //        gamer.getOverflowNetIndices(netIndices);
+    //        log() << "gamer iter " << iter << " overflow net: " << netIndices.size() << "/" << nets.size() << "\n";
+    //    }
+    //    netIndices.clear();
+    //    for(int netId = 0; netId < nets.size(); netId++)
+    //        if(isGamerRoutedNet[netId])
+    //            netIndices.push_back(netId);
+    //    log() << "commiting gamer's result ...\n";
+    //    gamer.commit(netIndices);
+    //    log() << "commiting done\n";
+    //}
     t3 = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t).count();
     t = std::chrono::high_resolution_clock::now();
     
@@ -349,13 +349,21 @@ void GlobalRouter::write(std::string guide_file) {
         getGuides(net, guides);
         
         ss << net.getName() << std::endl;
-        ss << "(" << std::endl;
-        for (const auto& guide : guides) {
-            ss << gridGraph.getGridline(0, guide.second.x.low) << " "
-                 << gridGraph.getGridline(1, guide.second.y.low) << " "
-                 << gridGraph.getGridline(0, guide.second.x.high + 1) << " "
-                 << gridGraph.getGridline(1, guide.second.y.high + 1) << " "
-                 << gridGraph.getLayerName(guide.first) << std::endl;
+        // ss << "(" << std::endl;
+        // for (const auto& guide : guides) {
+        //     ss << gridGraph.getGridline(0, guide.second.x.low) << " "
+        //          << gridGraph.getGridline(1, guide.second.y.low) << " "
+        //          << gridGraph.getGridline(0, guide.second.x.high + 1) << " "
+        //          << gridGraph.getGridline(1, guide.second.y.high + 1) << " "
+        //          << gridGraph.getLayerName(guide.first) << std::endl;
+        // }
+        for(const auto &guide : guides)
+        {
+            ss << guide.second.x.low << " "
+               << guide.second.y.low << " "
+               << guide.second.x.high << " "
+               << guide.second.y.high << " "
+               << gridGraph.getLayerName(guide.first) << std::endl;
         }
         ss << ")" << std::endl;
     }

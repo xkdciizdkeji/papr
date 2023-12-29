@@ -190,81 +190,57 @@ GridGraph::GridGraph(const ISPD24Parser &parser, const Parameters &params)
     unit_length_short_costs = parser.unit_length_short_costs;
 
     // horizontal gridlines
-    std::vector<DBU> hGridlines;
-    std::vector<DBU> hGridCenters;
-    hGridlines.push_back(0);
-    for(int x = 0; x < xSize; x++)
-    {
-        hGridlines.push_back(hGridlines[x] + parser.horizontal_gcell_edge_lengths[x]);
-        hGridCenters.push_back((hGridlines[x] + hGridlines[x+1]) / 2);
-    }
-    // vertical gridlines
-    std::vector<DBU> vGridlines;
-    std::vector<DBU> vGridCenters;
-    vGridlines.push_back(0);
-    for(int x = 0; x < xSize; x++)
-    {
-        vGridlines.push_back(vGridlines[x] + parser.vertical_gcell_edge_lengths[x]);
-        vGridCenters.push_back((vGridlines[x] + hGridlines[x+1]) / 2);
-    }
-    // fill gridlines
-    gridlines.push_back(std::move(hGridlines));
-    gridlines.push_back(std::move(vGridlines));
-    gridCenters.push_back(std::move(hGridCenters));
-    gridCenters.push_back(std::move(vGridCenters));
+    edgeLengths.resize(2);
+    edgeLengths[MetalLayer::H] = parser.horizontal_gcell_edge_lengths;
+    edgeLengths[MetalLayer::V] = parser.vertical_gcell_edge_lengths;
 
     graphEdges.assign(nLayers, vector<vector<GraphEdge>>(xSize, vector<GraphEdge>(ySize)));
     for(int layerIdx = 0; layerIdx < nLayers; layerIdx++)
     {
-        if(layerDirections[layerIdx]) // horizontal
-        {
-            for(int y = 0; y < ySize; y++)
-                for(int x = 0; x < xSize - 1; x++)
-                    graphEdges[layerIdx][x][y].capacity = parser.gcell_edge_capaicty[layerIdx][y][x+1];
-        }
-        else // vertical
-        {
-            for(int x = 0; x < xSize; x++)
-                for(int y = 0; y < ySize - 1; y++)
-                    graphEdges[layerIdx][x][y].capacity = parser.gcell_edge_capaicty[layerIdx][y+1][x];
-        }
+        constexpr unsigned int xBlock = 32;
+        constexpr unsigned int yBlock = 32;
+        for(int x = 0; x < xSize; x += xBlock)
+            for(int y = 0; y < ySize; y += yBlock)
+                for(int xx = x; xx < std::min(xSize, x + xBlock); xx++)
+                    for(int yy = y; yy < std::min(ySize, y + yBlock); yy++)
+                        graphEdges[layerIdx][xx][yy].capacity = parser.gcell_edge_capaicty[layerIdx][yy][xx];
     }
 }
 
-utils::IntervalT<int> GridGraph::rangeSearchGridlines(const unsigned dimension, const utils::IntervalT<DBU>& locInterval) const {
-    utils::IntervalT<int> range;
-    range.low = lower_bound(gridlines[dimension].begin(), gridlines[dimension].end(), locInterval.low) - gridlines[dimension].begin();
-    range.high = lower_bound(gridlines[dimension].begin(), gridlines[dimension].end(), locInterval.high) - gridlines[dimension].begin();
-    if (range.high >= gridlines[dimension].size()) {
-        range.high = gridlines[dimension].size() - 1;
-    } else if (gridlines[dimension][range.high] > locInterval.high) {
-        range.high -= 1;
-    }
-    return range;
-}
+// utils::IntervalT<int> GridGraph::rangeSearchGridlines(const unsigned dimension, const utils::IntervalT<DBU>& locInterval) const {
+//     utils::IntervalT<int> range;
+//     range.low = lower_bound(gridlines[dimension].begin(), gridlines[dimension].end(), locInterval.low) - gridlines[dimension].begin();
+//     range.high = lower_bound(gridlines[dimension].begin(), gridlines[dimension].end(), locInterval.high) - gridlines[dimension].begin();
+//     if (range.high >= gridlines[dimension].size()) {
+//         range.high = gridlines[dimension].size() - 1;
+//     } else if (gridlines[dimension][range.high] > locInterval.high) {
+//         range.high -= 1;
+//     }
+//     return range;
+// }
   
-utils::IntervalT<int> GridGraph::rangeSearchRows(const unsigned dimension, const utils::IntervalT<DBU>& locInterval) const {
-    const auto& lineRange = rangeSearchGridlines(dimension, locInterval);
-    return {
-        gridlines[dimension][lineRange.low] == locInterval.low ? lineRange.low : max(lineRange.low - 1, 0),
-        gridlines[dimension][lineRange.high] == locInterval.high ? lineRange.high - 1 : min(lineRange.high, static_cast<int>(getSize(dimension)) - 1)
-    };
-}
+// utils::IntervalT<int> GridGraph::rangeSearchRows(const unsigned dimension, const utils::IntervalT<DBU>& locInterval) const {
+//     const auto& lineRange = rangeSearchGridlines(dimension, locInterval);
+//     return {
+//         gridlines[dimension][lineRange.low] == locInterval.low ? lineRange.low : max(lineRange.low - 1, 0),
+//         gridlines[dimension][lineRange.high] == locInterval.high ? lineRange.high - 1 : min(lineRange.high, static_cast<int>(getSize(dimension)) - 1)
+//     };
+// }
 
-utils::BoxT<DBU> GridGraph::getCellBox(utils::PointT<int> point) const {
-    return {
-        getGridline(0, point.x), getGridline(1, point.y),
-        getGridline(0, point.x + 1), getGridline(1, point.y + 1)
-    };
-}
+// utils::BoxT<DBU> GridGraph::getCellBox(utils::PointT<int> point) const {
+//     return {
+//         getGridline(0, point.x), getGridline(1, point.y),
+//         getGridline(0, point.x + 1), getGridline(1, point.y + 1)
+//     };
+// }
 
-utils::BoxT<int> GridGraph::rangeSearchCells(const utils::BoxT<DBU>& box) const {
-    return {rangeSearchRows(0, box[0]), rangeSearchRows(1, box[1])};
-}
+// utils::BoxT<int> GridGraph::rangeSearchCells(const utils::BoxT<DBU>& box) const {
+//     return {rangeSearchRows(0, box[0]), rangeSearchRows(1, box[1])};
+// }
 
-DBU GridGraph::getEdgeLength(unsigned direction, unsigned edgeIndex) const {
-    return gridCenters[direction][edgeIndex + 1] - gridCenters[direction][edgeIndex];
-}
+// DBU GridGraph::getEdgeLength(unsigned direction, unsigned edgeIndex) const {
+//     return gridCenters[direction][edgeIndex + 1] - gridCenters[direction][edgeIndex];
+// }
 
 inline double GridGraph::logistic(const CapacityT& input, const double slope) const {
     return 1.0 / (1.0 + exp(input * slope));
