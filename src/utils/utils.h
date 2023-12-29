@@ -15,4 +15,3 @@ using utils::logmem;
 using DBU = std::int64_t;
 using CostT = double;
 using CapacityT = double;
-using realT = float;

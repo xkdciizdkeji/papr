@@ -3,7 +3,6 @@
 #include <cuda_runtime.h>
 #include "../utils/helper_cuda.h"
 #include "../utils/helper_math.h"
-#include <numeric>
 
 // DIRECTION的说明
 // DIRECTION = 0 => 第0层顺序是X,Y（纵向）
@@ -49,7 +48,7 @@
 constexpr int MAX_ROUTE_LEN_PER_PIN = 150; // 估计每一个pin平均最多会占多少routes
 constexpr int MAX_NUM_LAYER = 20;          // 估计最大的层数
 constexpr int MAX_BATCH_SIZE = 1;
-constexpr float INFINITY_DISTANCE = 1e20f;
+constexpr realT INFINITY_DISTANCE = std::numeric_limits<realT>::infinity();
 
 // ------------------------------
 // CUDA Device Function
@@ -68,18 +67,18 @@ __host__ __device__ int xyzToIdx(int x, int y, int z, int DIRECTION, int N)
                              : z * N * N + x * N + y;
 }
 
-__host__ __device__ float logistic(float x, float slope)
+__host__ __device__ realT logistic(realT x, realT slope)
 {
-  return 1.f / (1.f + expf(x * slope));
+  return 1.f / (1.f + exp(x * slope));
 }
 
 // ------------------------------
 // CUDA Kernel
 // ------------------------------
 
-__global__ void calculateWireCostSum(float *wireCostSum, const float *wireCost, int offsetX, int offsetY, int lenX, int lenY, int DIRECTION, int N, int X, int Y, int LAYER)
+__global__ void calculateWireCostSum(realT *wireCostSum, const realT *wireCost, int offsetX, int offsetY, int lenX, int lenY, int DIRECTION, int N, int X, int Y, int LAYER)
 {
-  extern __shared__ float sum[];
+  extern __shared__ realT sum[];
   for (int i = 1; i < LAYER; i++)
   {
     if(blockIdx.x > ((i & 1) ^ DIRECTION ? lenY : lenX))
@@ -108,7 +107,7 @@ __global__ void calculateWireCostSum(float *wireCostSum, const float *wireCost, 
   }
 }
 
-__global__ void cleanDistPrev(float *dist, int *prev, int isFirstIteration, int offsetX, int offsetY, int lenX, int lenY, int DIRECTION, int N, int X, int Y, int LAYER)
+__global__ void cleanDistPrev(realT *dist, int *prev, int isFirstIteration, int offsetX, int offsetY, int lenX, int lenY, int DIRECTION, int N, int X, int Y, int LAYER)
 {
   int x = blockIdx.x * blockDim.x + threadIdx.x;
   int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -126,7 +125,7 @@ __global__ void cleanDistPrev(float *dist, int *prev, int isFirstIteration, int 
   }
 }
 
-__global__ void setRootPin(float *dist, int *prev, int *isRoutedPin, const int *allpins)
+__global__ void setRootPin(realT *dist, int *prev, int *isRoutedPin, const int *allpins)
 {
   for (int i = 0; i < allpins[0]; i++)
     isRoutedPin[i] = 0;
@@ -135,13 +134,13 @@ __global__ void setRootPin(float *dist, int *prev, int *isRoutedPin, const int *
   prev[allpins[1]] = allpins[1];
 }
 
-__global__ void sweepWire(float *dist, int *prev, const float *costSum, int offsetX, int offsetY, int lenX, int lenY, int DIRECTION, int N, int X, int Y, int LAYER)
+__global__ void sweepWire(realT *dist, int *prev, const realT *costSum, int offsetX, int offsetY, int lenX, int lenY, int DIRECTION, int N, int X, int Y, int LAYER)
 {
   extern __shared__ int shared[];
-  float *minL = (float *)(shared);
-  float *minR = (float *)(shared + max(lenX, lenY));
-  int *pL = shared + 2 * max(lenX, lenY);
-  int *pR = shared + 3 * max(lenX, lenY);
+  realT *minL = (realT *)(shared);
+  realT *minR = (realT *)(minL + max(lenX, lenY));
+  int *pL = (int *)(minR + max(lenX, lenY));
+  int *pR = (int *)(pL + max(lenX, lenY));
 
   for (int i = 1; i < LAYER; i++)
   {
@@ -186,7 +185,7 @@ __global__ void sweepWire(float *dist, int *prev, const float *costSum, int offs
     {
       if (cur < len)
       {
-        float val = minL[cur] + costSum[offset + cur];
+        realT val = minL[cur] + costSum[offset + cur];
         int p = pL[cur];
         if (minL[cur] + costSum[offset + cur] > minR[len - 1 - cur] - costSum[offset + cur])
         {
@@ -204,7 +203,7 @@ __global__ void sweepWire(float *dist, int *prev, const float *costSum, int offs
   }
 }
 
-__global__ void sweepVia(float *dist, int *prev, const float *viaCost, int offsetX, int offsetY, int lenX, int lenY, int DIRECTION, int N, int X, int Y, int LAYER)
+__global__ void sweepVia(realT *dist, int *prev, const realT *viaCost, int offsetX, int offsetY, int lenX, int lenY, int DIRECTION, int N, int X, int Y, int LAYER)
 {
   int x = blockIdx.x * blockDim.x + threadIdx.x;
   int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -237,9 +236,9 @@ __global__ void sweepVia(float *dist, int *prev, const float *viaCost, int offse
 }
 
 // 回溯一条路径
-__global__ void tracePath(float *dist, int *prev, int *isRoutedPin, int *routes, const int *allpins, int DIRECTION, int N, int X, int Y, int LAYER)
+__global__ void tracePath(realT *dist, int *prev, int *isRoutedPin, int *routes, const int *allpins, int DIRECTION, int N, int X, int Y, int LAYER)
 {
-  float minDist = INFINITY_DISTANCE;
+  realT minDist = INFINITY_DISTANCE;
   int pinId = -1, idx = -1;
 
   // 寻找距离最短的未被连线的pin
@@ -304,7 +303,7 @@ __global__ void tracePath(float *dist, int *prev, int *isRoutedPin, int *routes,
   }
 }
 
-__global__ void markOverflowNet(int *isOverflowNet, const float *demand, const float *capacity, const int *routes, const int *routesOffset, int NUMNET, int DIRECTION, int N)
+__global__ void markOverflowNet(int *isOverflowNet, const realT *demand, const realT *capacity, const int *routes, const int *routesOffset, int NUMNET, int DIRECTION, int N)
 {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= NUMNET)
@@ -332,8 +331,8 @@ __global__ void markOverflowNet(int *isOverflowNet, const float *demand, const f
   }
 }
 
-__global__ void commitRoutes(float *demand, const float *hEdgeLengths, const float *vEdgeLengths, const float *layerMinLengths, const int *routes,
-                             const int *routesOffset, const int *netIndices, float viaMultiplier, int reverse, int NUMNET, int DIRECTION, int N, int X, int Y, int LAYER)
+__global__ void commitRoutes(realT *demand, const realT *hEdgeLengths, const realT *vEdgeLengths, const realT *layerMinLengths, const int *routes,
+                             const int *routesOffset, const int *netIndices, realT viaMultiplier, int reverse, int NUMNET, int DIRECTION, int N, int X, int Y, int LAYER)
 {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= NUMNET)
@@ -357,9 +356,9 @@ __global__ void commitRoutes(float *demand, const float *hEdgeLengths, const flo
       for (int z = startZ, x = startX, y = startY; z <= endZ; z++)
       {
         int tmpIdx = xyzToIdx(x, y, z, DIRECTION, N);
-        float leftEdgeLength = ((z & 1) ^ DIRECTION) ? (x >= 1 ? hEdgeLengths[x] : 0.f) : (y >= 1 ? vEdgeLengths[y] : 0.f);
-        float rightEdgeLength = ((z & 1) ^ DIRECTION) ? (x < X - 1 ? hEdgeLengths[x + 1] : 0.f) : (y < Y - 1 ? vEdgeLengths[y + 1] : 0.f);
-        float vd = layerMinLengths[z] / (leftEdgeLength + rightEdgeLength) * viaMultiplier;
+        realT leftEdgeLength = ((z & 1) ^ DIRECTION) ? (x >= 1 ? hEdgeLengths[x] : 0.f) : (y >= 1 ? vEdgeLengths[y] : 0.f);
+        realT rightEdgeLength = ((z & 1) ^ DIRECTION) ? (x < X - 1 ? hEdgeLengths[x + 1] : 0.f) : (y < Y - 1 ? vEdgeLengths[y + 1] : 0.f);
+        realT vd = layerMinLengths[z] / (leftEdgeLength + rightEdgeLength) * viaMultiplier;
         vd = (z == startZ || z == endZ ? vd : 2.f * vd);
         vd = reverse ? -vd : vd;
         if (leftEdgeLength > 0.f)
@@ -372,8 +371,8 @@ __global__ void commitRoutes(float *demand, const float *hEdgeLengths, const flo
 }
 
 // Note: cuda和cpu分别计算的wire cost之间最大误差为0.000134，via cost之间误差最大误差为0.022000
-__global__ void calculateWireViaCost(float *wireCost, float *viaCost, const float *demand, const float *capacity, const float *hEdgeLengths, const float *vEdgeLengths,
-                                     const float *layerMinLengths, const float *unitLengthShortCosts, float unitLengthWireCost, float unitViaCost, float logisticSlope, float viaMultiplier,
+__global__ void calculateWireViaCost(realT *wireCost, realT *viaCost, const realT *demand, const realT *capacity, const realT *hEdgeLengths, const realT *vEdgeLengths,
+                                     const realT *layerMinLengths, const realT *unitLengthShortCosts, realT unitLengthWireCost, realT unitViaCost, realT logisticSlope, realT viaMultiplier,
                                      int offsetX, int offsetY, int lenX, int lenY, int DIRECTION, int N, int X, int Y, int LAYER)
 {
   int x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -386,12 +385,12 @@ __global__ void calculateWireViaCost(float *wireCost, float *viaCost, const floa
   int idx = xyzToIdx(x, y, z, DIRECTION, N);
 
   // wire cost
-  float edgeLength = ((z & 1) ^ DIRECTION) ? (x >= 1 ? hEdgeLengths[x] : 0.f) : (y >= 1 ? vEdgeLengths[y] : 0.f);
-  float logisticFactor = capacity[idx] < 1.f ? 1.f : logistic(capacity[idx] - demand[idx], logisticSlope);
+  realT edgeLength = ((z & 1) ^ DIRECTION) ? (x >= 1 ? hEdgeLengths[x] : 0.f) : (y >= 1 ? vEdgeLengths[y] : 0.f);
+  realT logisticFactor = capacity[idx] < 1.f ? 1.f : logistic(capacity[idx] - demand[idx], logisticSlope);
   wireCost[idx] = edgeLength * (unitLengthWireCost + unitLengthShortCosts[z] * logisticFactor);
 
   // via cost
-  float vc = 0.f;
+  realT vc = 0.f;
   if (z >= 1)
   {
     vc += unitViaCost;
@@ -400,17 +399,17 @@ __global__ void calculateWireViaCost(float *wireCost, float *viaCost, const floa
     {
       int leftIdx = xyzToIdx(x, y, l, DIRECTION, N);
       int rightIdx = leftIdx + 1;
-      float leftEdgeLength = ((l & 1) ^ DIRECTION) ? (x >= 1 ? hEdgeLengths[x] : 0.f) : (y >= 1 ? vEdgeLengths[y] : 0.f);
-      float rightEdgeLength = ((l & 1) ^ DIRECTION) ? (x < X - 1 ? hEdgeLengths[x + 1] : 0.f) : (y < Y - 1 ? vEdgeLengths[y + 1] : 0.f);
-      float vd = layerMinLengths[l] / (leftEdgeLength + rightEdgeLength) * viaMultiplier;
+      realT leftEdgeLength = ((l & 1) ^ DIRECTION) ? (x >= 1 ? hEdgeLengths[x] : 0.f) : (y >= 1 ? vEdgeLengths[y] : 0.f);
+      realT rightEdgeLength = ((l & 1) ^ DIRECTION) ? (x < X - 1 ? hEdgeLengths[x + 1] : 0.f) : (y < Y - 1 ? vEdgeLengths[y + 1] : 0.f);
+      realT vd = layerMinLengths[l] / (leftEdgeLength + rightEdgeLength) * viaMultiplier;
       if (leftEdgeLength > 0.f)
       {
-        float leftLogisticFactor = capacity[leftIdx] < 1.f ? 1.f : logistic(capacity[leftIdx] - demand[leftIdx], logisticSlope);
+        realT leftLogisticFactor = capacity[leftIdx] < 1.f ? 1.f : logistic(capacity[leftIdx] - demand[leftIdx], logisticSlope);
         vc += vd * leftEdgeLength * (unitLengthWireCost + unitLengthShortCosts[l] * leftLogisticFactor);
       }
       if (rightEdgeLength > 0.f)
       {
-        float rightLogisticFactor = capacity[rightIdx] < 1.f ? 1.f : logistic(capacity[rightIdx] - demand[rightIdx], logisticSlope);
+        realT rightLogisticFactor = capacity[rightIdx] < 1.f ? 1.f : logistic(capacity[rightIdx] - demand[rightIdx], logisticSlope);
         vc += vd * rightEdgeLength * (unitLengthWireCost + unitLengthShortCosts[l] * rightLogisticFactor);
       }
     }
@@ -440,34 +439,34 @@ GPUMazeRoute::GPUMazeRoute(std::vector<GRNet> &nets, GridGraph &graph, const Par
   viaMultiplier = parameters.via_multiplier;
 
   // 初始化hEdgeLengths, vEdgeLengths内存显存
-  auto hEdgeLengths = std::make_unique<float[]>(X);
-  auto vEdgeLengths = std::make_unique<float[]>(Y);
+  auto hEdgeLengths = std::make_unique<realT[]>(X);
+  auto vEdgeLengths = std::make_unique<realT[]>(Y);
   hEdgeLengths[0] = vEdgeLengths[0] = 0.f;
   for (int x = 1; x < X; x++)
     hEdgeLengths[x] = gridGraph.getEdgeLength(MetalLayer::H, x - 1);
   for (int y = 1; y < Y; y++)
     vEdgeLengths[y] = gridGraph.getEdgeLength(MetalLayer::V, y - 1);
-  checkCudaErrors(cudaMalloc(&devHEdgeLengths, X * sizeof(float)));
-  checkCudaErrors(cudaMalloc(&devVEdgeLengths, Y * sizeof(float)));
-  checkCudaErrors(cudaMemcpy(devHEdgeLengths, hEdgeLengths.get(), X * sizeof(float), cudaMemcpyHostToDevice));
-  checkCudaErrors(cudaMemcpy(devVEdgeLengths, vEdgeLengths.get(), Y * sizeof(float), cudaMemcpyHostToDevice));
+  checkCudaErrors(cudaMalloc(&devHEdgeLengths, X * sizeof(realT)));
+  checkCudaErrors(cudaMalloc(&devVEdgeLengths, Y * sizeof(realT)));
+  checkCudaErrors(cudaMemcpy(devHEdgeLengths, hEdgeLengths.get(), X * sizeof(realT), cudaMemcpyHostToDevice));
+  checkCudaErrors(cudaMemcpy(devVEdgeLengths, vEdgeLengths.get(), Y * sizeof(realT), cudaMemcpyHostToDevice));
 
   // 初始化layerMinLengths, unitLengthShortCosts内存显存
-  auto layerMinLengths = std::make_unique<float[]>(LAYER);
-  auto unitLengthShortCosts = std::make_unique<float[]>(LAYER);
+  auto layerMinLengths = std::make_unique<realT[]>(LAYER);
+  auto unitLengthShortCosts = std::make_unique<realT[]>(LAYER);
   for (int l = 0; l < LAYER; l++)
   {
     layerMinLengths[l] = gridGraph.getLayerMinLength(l);
     unitLengthShortCosts[l] = gridGraph.getUnitLengthShortCost(l);
   }
-  checkCudaErrors(cudaMalloc(&devLayerMinLengths, LAYER * sizeof(float)));
-  checkCudaErrors(cudaMalloc(&devUnitLengthShortCosts, LAYER * sizeof(float)));
-  checkCudaErrors(cudaMemcpy(devLayerMinLengths, layerMinLengths.get(), LAYER * sizeof(float), cudaMemcpyHostToDevice));
-  checkCudaErrors(cudaMemcpy(devUnitLengthShortCosts, unitLengthShortCosts.get(), LAYER * sizeof(float), cudaMemcpyHostToDevice));
+  checkCudaErrors(cudaMalloc(&devLayerMinLengths, LAYER * sizeof(realT)));
+  checkCudaErrors(cudaMalloc(&devUnitLengthShortCosts, LAYER * sizeof(realT)));
+  checkCudaErrors(cudaMemcpy(devLayerMinLengths, layerMinLengths.get(), LAYER * sizeof(realT), cudaMemcpyHostToDevice));
+  checkCudaErrors(cudaMemcpy(devUnitLengthShortCosts, unitLengthShortCosts.get(), LAYER * sizeof(realT), cudaMemcpyHostToDevice));
 
   // 初始化capacity, demand内存显存
-  auto capacity = std::make_unique<float[]>(LAYER * N * N);
-  auto demand = std::make_unique<float[]>(LAYER * N * N);
+  auto capacity = std::make_unique<realT[]>(LAYER * N * N);
+  auto demand = std::make_unique<realT[]>(LAYER * N * N);
   for (int z = 0; z < LAYER; z++)
   {
     if ((z & 1) ^ DIRECTION)
@@ -489,10 +488,10 @@ GPUMazeRoute::GPUMazeRoute(std::vector<GRNet> &nets, GridGraph &graph, const Par
         }
     }
   }
-  checkCudaErrors(cudaMalloc(&devCapacity, LAYER * N * N * sizeof(float)));
-  checkCudaErrors(cudaMalloc(&devDemand, LAYER * N * N * sizeof(float)));
-  checkCudaErrors(cudaMemcpy(devCapacity, capacity.get(), LAYER * N * N * sizeof(float), cudaMemcpyHostToDevice));
-  checkCudaErrors(cudaMemcpy(devDemand, demand.get(), LAYER * N * N * sizeof(float), cudaMemcpyHostToDevice));
+  checkCudaErrors(cudaMalloc(&devCapacity, LAYER * N * N * sizeof(realT)));
+  checkCudaErrors(cudaMalloc(&devDemand, LAYER * N * N * sizeof(realT)));
+  checkCudaErrors(cudaMemcpy(devCapacity, capacity.get(), LAYER * N * N * sizeof(realT), cudaMemcpyHostToDevice));
+  checkCudaErrors(cudaMemcpy(devDemand, demand.get(), LAYER * N * N * sizeof(realT), cudaMemcpyHostToDevice));
 
   // 初始化rootIndices, isRoutedNet, routes, routesOffset显存内存
   cpuRootIndices = (int *)malloc(NUMNET * sizeof(int));
@@ -556,12 +555,12 @@ GPUMazeRoute::GPUMazeRoute(std::vector<GRNet> &nets, GridGraph &graph, const Par
   checkCudaErrors(cudaMalloc(&devIsRoutedPin, ALLPIN_STRIDE * sizeof(int)));
 
   // 初始化wireCost, wireCostSum, viaCost显存
-  checkCudaErrors(cudaMalloc(&devWireCost, LAYER * N * N * sizeof(float)));
-  checkCudaErrors(cudaMalloc(&devWireCostSum, LAYER * N * N * sizeof(float)));
-  checkCudaErrors(cudaMalloc(&devViaCost, LAYER * N * N * sizeof(float)));
+  checkCudaErrors(cudaMalloc(&devWireCost, LAYER * N * N * sizeof(realT)));
+  checkCudaErrors(cudaMalloc(&devWireCostSum, LAYER * N * N * sizeof(realT)));
+  checkCudaErrors(cudaMalloc(&devViaCost, LAYER * N * N * sizeof(realT)));
 
   // 初始化dist, prev显存
-  checkCudaErrors(cudaMalloc(&devDist, LAYER * N * N * sizeof(float)));
+  checkCudaErrors(cudaMalloc(&devDist, LAYER * N * N * sizeof(realT)));
   checkCudaErrors(cudaMalloc(&devPrev, LAYER * N * N * sizeof(int)));
 
   // 标记overflow net
@@ -612,7 +611,6 @@ void GPUMazeRoute::route(const std::vector<int> &netIndices, int sweepTurns, int
   checkCudaErrors(cudaMemcpy(devNetIndices, netIndices.data(), numNetToRoute * sizeof(int), cudaMemcpyHostToDevice));
   commitRoutes<<<(numNetToRoute + 511) / 512, 512>>>(devDemand, devHEdgeLengths, devVEdgeLengths, devLayerMinLengths, devRoutes,
                                                      devRoutesOffset, devNetIndices, viaMultiplier, 1, numNetToRoute, DIRECTION, N, X, Y, LAYER);
-  checkCudaErrors(cudaDeviceSynchronize());
 
   for (int i = 0; i < netIndices.size(); i++)
   {
@@ -648,7 +646,7 @@ void GPUMazeRoute::route(const std::vector<int> &netIndices, int sweepTurns, int
         devLayerMinLengths, devUnitLengthShortCosts, unitLengthWireCost, unitViaCost, logisticSlope, viaMultiplier,
         offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER
     );
-    calculateWireCostSum<<<maxlen, (maxlen + 1) / 2, maxlen * sizeof(float)>>>(
+    calculateWireCostSum<<<maxlen, (maxlen + 1) / 2, maxlen * sizeof(realT)>>>(
       devWireCostSum, devWireCost, offsetX, offsetY, lenX, lenY,  DIRECTION, N, X, Y, LAYER
     );
 
@@ -665,7 +663,7 @@ void GPUMazeRoute::route(const std::vector<int> &netIndices, int sweepTurns, int
         sweepVia<<<dim3((lenX + 31) / 32, (lenY + 31) / 32, 1), dim3(32, 32, 1)>>>(
           devDist, devPrev, devViaCost, offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER
         );
-        sweepWire<<<maxlen, std::min(1024, (maxlen + 1) / 2), 4 * maxlen * sizeof(float)>>>(
+        sweepWire<<<maxlen, std::min(1024, (maxlen + 1) / 2), maxlen * (2 * sizeof(realT) + 2 * sizeof(int))>>>(
           devDist, devPrev, devWireCostSum, offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER
         );
       }
@@ -681,21 +679,28 @@ void GPUMazeRoute::route(const std::vector<int> &netIndices, int sweepTurns, int
 
     // copy routes to cpu
     checkCudaErrors(cudaMemcpy(cpuNetRoutes, devNetRoutes, netRoutesLen * sizeof(int), cudaMemcpyDeviceToHost));
-    // check every pin is routed
-    checkCudaErrors(cudaMemcpy(cpuIsRoutedPin, devIsRoutedPin, ALLPIN_STRIDE * sizeof(int), cudaMemcpyDeviceToHost));
-    for (int pinId = 0; pinId < cpuAllpins[0]; pinId++) // 只要sweepTurn >= 2就不会出现unrouted pin
-    {
-      if (!cpuIsRoutedPin[pinId])
-      {
-        ::utils::log() << "ERROR: Not all pins of net(id=" << netId << ") are routed\n";
-        exit(-1);
-      }
-    }
+    // // check if routes overflow
+    // if(cpuNetRoutes[0] + 1 > netRoutesLen)
+    // {
+    //   ::utils::log() << "ERROR: routes overflow for net(id=" << netId << ")\n";
+    //   exit(-1);
+    // }
+    // // check every pin is routed
+    // checkCudaErrors(cudaMemcpy(cpuIsRoutedPin, devIsRoutedPin, ALLPIN_STRIDE * sizeof(int), cudaMemcpyDeviceToHost));
+    // for (int pinId = 0; pinId < cpuAllpins[0]; pinId++) // 只要sweepTurn >= 2就不会出现unrouted pin
+    // {
+    //   if (!cpuIsRoutedPin[pinId])
+    //   {
+    //     ::utils::log() << "ERROR: Not all pins of net(id=" << netId << ") are routed\n";
+    //     exit(-1);
+    //   }
+    // }
     cpuIsRoutedNet[netId] = 1;
   }
 
   // 标记overflow net
   markOverflowNet<<<(NUMNET + 511) / 512, 512>>>(devIsOverflowNet, devDemand, devCapacity, devRoutes, devRoutesOffset, NUMNET, DIRECTION, N);
+  checkCudaErrors(cudaDeviceSynchronize());
   checkCudaErrors(cudaMemcpy(cpuIsOverflowNet, devIsOverflowNet, NUMNET * sizeof(int), cudaMemcpyDeviceToHost));
 }
 
@@ -717,6 +722,50 @@ void GPUMazeRoute::commit(const std::vector<int> &netIndices)
       auto newTree = extractGRTree(treeMap.get(), cpuRoutes + cpuRoutesOffset[netId], cpuRootIndices[netId]);
       nets[netId].setRoutingTree(newTree);
       gridGraph.commitTree(newTree, false);
+
+      // // check if each pin of the net is routed
+      // std::unordered_set<int> routePoints;
+      // GRTreeNode::preorder(newTree, [&](std::shared_ptr<GRTreeNode> node){
+      //   for(const auto &child : node->children)
+      //   {
+      //     if(child->layerIdx == node->layerIdx)
+      //     {
+      //       int nodeIdx = xyzToIdx(node->x, node->y, node->layerIdx, DIRECTION, N);
+      //       int childIdx = xyzToIdx(child->x, child->y, child->layerIdx, DIRECTION, N);
+      //       int startIdx = std::min(nodeIdx, childIdx);
+      //       int endIdx = std::max(nodeIdx, childIdx);
+      //       for(int idx = startIdx; idx <= endIdx; idx++)
+      //         routePoints.insert(idx);
+      //     }
+      //     else
+      //     {
+      //       int x = node->x;
+      //       int y = node->y;
+      //       int startZ = std::min(child->layerIdx, node->layerIdx);
+      //       int endZ = std::max(child->layerIdx, node->layerIdx);
+      //       for(int z = startZ; z <= endZ; z++)
+      //         routePoints.insert(xyzToIdx(x, y, z, DIRECTION, N));
+      //     }
+      //   }
+      // });
+      // for(const auto &accessPoints : nets[netId].getPinAccessPoints())
+      // {
+      //   bool isRoutePin = false;
+      //   for(const auto &point : accessPoints)
+      //   {
+      //     auto idx = xyzToIdx(point.x, point.y, point.layerIdx, DIRECTION, N);
+      //     if(routePoints.find(idx) != routePoints.end())
+      //     {
+      //       isRoutePin = true;
+      //       break;
+      //     }
+      //   }
+      //   if(!isRoutePin)
+      //   {
+      //     log() << "Gamer error: net(id=" << netId << ") is not routed\n";
+      //     break;
+      //   }
+      // }
     }
     else
     {

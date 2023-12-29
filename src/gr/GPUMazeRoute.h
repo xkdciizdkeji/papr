@@ -4,6 +4,8 @@
 #include "GridGraph.h"
 #include "PatternRoute.h"
 
+using realT = double;
+
 class GPUMazeRoute
 {
 public:
@@ -34,18 +36,18 @@ private:
   int NUMNET;
   int ALLPIN_STRIDE;
 
-  float unitLengthWireCost;
-  float unitViaCost;
-  float logisticSlope;
-  float viaMultiplier;
+  realT unitLengthWireCost;
+  realT unitViaCost;
+  realT logisticSlope;
+  realT viaMultiplier;
 
-  float *devHEdgeLengths;
-  float *devVEdgeLengths;
-  float *devLayerMinLengths;
-  float *devUnitLengthShortCosts;
+  realT *devHEdgeLengths;
+  realT *devVEdgeLengths;
+  realT *devLayerMinLengths;
+  realT *devUnitLengthShortCosts;
 
-  float *devCapacity;
-  float *devDemand;
+  realT *devCapacity;
+  realT *devDemand;
 
   int *cpuRootIndices;
   int *cpuIsRoutedNet;
@@ -59,11 +61,11 @@ private:
   int *cpuAllpins, *devAllpins;
   int *cpuIsRoutedPin, *devIsRoutedPin;
 
-  float *devWireCost;
-  float *devWireCostSum;
-  float *devViaCost;
+  realT *devWireCost;
+  realT *devWireCostSum;
+  realT *devViaCost;
 
-  float *devDist;
+  realT *devDist;
   int *devPrev;
 };
 #endif
