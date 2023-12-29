@@ -308,32 +308,32 @@ void GlobalRouter::printStatistics() const {
     // resource
     CapacityT overflow = 0;
 
-    // CapacityT minResource = std::numeric_limits<CapacityT>::max();
-    // GRPoint bottleneck(-1, -1, -1);
-    // for (int layerIndex = parameters.min_routing_layer; layerIndex < gridGraph.getNumLayers(); layerIndex++) {
-    //     unsigned direction = gridGraph.getLayerDirection(layerIndex);
-    //     for (int x = 0; x < gridGraph.getSize(0) - 1 + direction; x++) {
-    //         for (int y = 0; y < gridGraph.getSize(1) - direction; y++) {
-    //             CapacityT resource = gridGraph.getEdge(layerIndex, x, y).getResource();
-    //             if (resource < minResource) {
-    //                 minResource = resource;
-    //                 bottleneck = {layerIndex, x, y};
-    //             }
-    //             CapacityT usage = wireUsage[layerIndex][x][y];
-    //             CapacityT capacity = max(gridGraph.getEdge(layerIndex, x, y).capacity, 0.0);
-    //             if (usage > 0.0 && usage > capacity) {
-    //                 overflow += usage - capacity;
-    //             }
-    //         }
-    //     }
-    // }
-
-    for (const auto& net : nets) {
-        int netoverflow = gridGraph.checkOverflow(net.getRoutingTree());
-        if (netoverflow > 0) {
-            overflow += netoverflow;
+    CapacityT minResource = std::numeric_limits<CapacityT>::max();
+    GRPoint bottleneck(-1, -1, -1);
+    for (int layerIndex = parameters.min_routing_layer; layerIndex < gridGraph.getNumLayers(); layerIndex++) {
+        unsigned direction = gridGraph.getLayerDirection(layerIndex);
+        for (int x = 0; x < gridGraph.getSize(0) - 1 + direction; x++) {
+            for (int y = 0; y < gridGraph.getSize(1) - direction; y++) {
+                CapacityT resource = gridGraph.getEdge(layerIndex, x, y).getResource();
+                if (resource < minResource) {
+                    minResource = resource;
+                    bottleneck = {layerIndex, x, y};
+                }
+                CapacityT usage = wireUsage[layerIndex][x][y];
+                CapacityT capacity = max(gridGraph.getEdge(layerIndex, x, y).capacity, 0.0);
+                if (usage > 0.0 && usage > capacity) {
+                    overflow += usage - capacity;
+                }
+            }
         }
     }
+
+    // for (const auto& net : nets) {
+    //     int netoverflow = gridGraph.checkOverflow(net.getRoutingTree());
+    //     if (netoverflow > 0) {
+    //         overflow += netoverflow;
+    //     }
+    // }
     
     
     double via_cost_scale = 1.0;
