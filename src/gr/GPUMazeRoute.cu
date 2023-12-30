@@ -45,8 +45,8 @@
 
 // Note: 使用treeDesc的cuda kernel已被cpu版本的extractGRTree函数取代
 
-constexpr int MAX_ROUTE_LEN_PER_PIN = 150; // 估计每一个pin平均最多会占多少routes
-constexpr int MAX_NUM_LAYER = 20;          // 估计最大的层数
+constexpr int MAX_ROUTE_LEN_PER_PIN = 50; // 估计每一个pin平均最多会占多少routes // routes size <= 2 * sweepTurn * 1 * numPins
+constexpr int MAX_NUM_LAYER = 20;         // 估计最大的层数
 constexpr int MAX_BATCH_SIZE = 1;
 constexpr realT INFINITY_DISTANCE = std::numeric_limits<realT>::infinity();
 
