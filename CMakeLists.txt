@@ -13,10 +13,15 @@ message(STATUS ${CMAKE_CURRENT_SOURCE_DIR})
 # Find includes in the build directories
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
+# enable cuda option
 option(ENABLE_CUDA "enable cuda for gpu maze routing" OFF)
 
 # Project's name
 project(CUGR LANGUAGES C CXX)
+
+# find package
+set(Boost_USE_STATIC_LIBS ON)
+find_package(Boost REQUIRED)
 
 # Set the output folder where your program will be created
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR})
@@ -59,6 +64,7 @@ add_subdirectory(${PATH_FLUTE})
 #######################
 # Include Directories #
 #######################
+target_include_directories(route PRIVATE ${Boost_INCLUDE_DIR})
 
 ##################
 # Compile Option #
@@ -86,6 +92,7 @@ endif()
 # Link Libraries #
 ##################
 target_link_libraries(route PRIVATE flute)
+target_link_libraries(route PRIVATE ${Boost_LIBRARIES})
 
 add_custom_command(
   TARGET route POST_BUILD
