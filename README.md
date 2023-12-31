@@ -8,7 +8,7 @@ $ git clone -b ispd24-lite https://github.com/flwave/gr_gpu.git
 **Step 2:** build by cmake
 ```bash
 $ cd ./gr_gpu/
-$ cmake -B build
+$ cmake -B build -DCMAKE_BUILD_TYPE=Release
 $ cmake --build build
 ```
 **Step 2":** build by cmake (enable cuda)
