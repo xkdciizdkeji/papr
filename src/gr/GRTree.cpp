@@ -1,5 +1,7 @@
 #include "GRTree.h"
 
+using namespace utils;
+
 void GRTreeNode::preorder(std::shared_ptr<GRTreeNode> node, std::function<void(std::shared_ptr<GRTreeNode>)> visit) {
     visit(node);
     for (auto& child : node->children) preorder(child, visit);

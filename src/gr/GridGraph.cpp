@@ -1,9 +1,13 @@
 #include "GridGraph.h"
 #include "GRNet.h"
+#include "../utils/utils.h"
+#include <fstream>
 
-// GridGraph::GridGraph(const Design& design, const Parameters& params): libDBU(design.getLibDBU()),parameters(params),parametersISPD24(){
-//     // libDBU=design.getLibDBU();
-//     // parameters=params;
+using std::min;
+using std::max;
+using std::vector;
+
+// GridGraph::GridGraph(const Design& design, const Parameters& params): libDBU(design.getLibDBU()), parameters(params) {
 //     gridlines = design.getGridlines();
 //     nLayers = design.getNumLayers();
 //     xSize = gridlines[0].size() - 1;
@@ -170,101 +174,73 @@
 //     }
 // }
 
-GridGraph::GridGraph(const Parser &parser, const ParametersISPD24 &params): parameters(params){
-    // Get gridlines
-    gridlines = parser.getGridlines();
-    nLayers = parser.getNumLayers();
-    xSize = gridlines[0].size() - 1;
-    ySize = gridlines[1].size() - 1;
-    
-    gridCenters.resize(2);
-    for (unsigned dimension = 0; dimension <= 1; dimension++) {
-        gridCenters[dimension].resize(gridlines[dimension].size() - 1);
-        for (int gridIndex = 0; gridIndex < gridlines[dimension].size() - 1; gridIndex++) {
-            gridCenters[dimension][gridIndex] = 
-                (gridlines[dimension][gridIndex] + gridlines[dimension][gridIndex + 1]) / 2;
-        }
-    }
+GridGraph::GridGraph(const ISPD24Parser &parser, const Parameters &params)
+    : parameters(params)
+{
+    nLayers = parser.n_layers;
+    xSize = parser.size_x;
+    ySize = parser.size_y;
 
-    layerNames.resize(nLayers);
-    layerDirections.resize(nLayers);
-    layerMinLengths.resize(nLayers);
-    for (int layerIndex = 0; layerIndex < nLayers; layerIndex++) {
-        const auto& layer = parser.getLayer(layerIndex);
-        layerNames[layerIndex] = layer.getName();
-        layerDirections[layerIndex] = layer.getDirection();
-        layerMinLengths[layerIndex] = layer.getMinLength();
-    }
-    
-    unit_length_wire_cost = parser.getUnitLengthWireCost();
-    unit_via_cost = parser.getUnitViaCost();
-    unit_length_short_costs.resize(nLayers);
-    for (int layerIndex = 0; layerIndex < nLayers; layerIndex++) {
-        unit_length_short_costs[layerIndex] = parser.getUnitLengthShortCost(layerIndex);
-    }
+    layerNames = parser.layer_names;
+    layerDirections = parser.layer_directions;
+    layerMinLengths = parser.layer_min_lengths;
 
-    // Init grid graph edges
+    unit_length_wire_cost = parser.unit_length_wire_cost;
+    unit_via_cost = parser.unit_via_cost;
+    unit_length_short_costs = parser.unit_length_short_costs;
+
+    // horizontal gridlines
+    edgeLengths.resize(2);
+    edgeLengths[MetalLayer::H] = parser.horizontal_gcell_edge_lengths;
+    edgeLengths[MetalLayer::V] = parser.vertical_gcell_edge_lengths;
+
     graphEdges.assign(nLayers, vector<vector<GraphEdge>>(xSize, vector<GraphEdge>(ySize)));
-    vector<vector<vector<CostT>>> CapacityMap = parser.getCapacityMap();
-    for (int layerIndex = 0; layerIndex < nLayers; layerIndex++) {
-        const MetalLayer& layer = parser.getLayer(layerIndex);
-        const unsigned direction = layer.getDirection();
-
-
-        // Initialize edges' capacity to the number of tracks
-        if (direction == MetalLayer::V) {
-            for (size_t x = 0; x < xSize; x++) {
-                for (size_t y = 0; y + 1 < ySize; y++) {
-                    CapacityT capacity = CapacityMap[layerIndex][x][y+1];
-                    graphEdges[layerIndex][x][y].capacity = capacity;
-                }
-            }
-        } else {
-            for (size_t y = 0; y < ySize; y++) {
-                for (size_t x = 0; x + 1 < xSize; x++) {
-                    CapacityT capacity = CapacityMap[layerIndex][x+1][y];
-                    graphEdges[layerIndex][x][y].capacity = capacity;
-                }
-            }
-        }
+    for(int layerIdx = 0; layerIdx < nLayers; layerIdx++)
+    {
+        constexpr unsigned int xBlock = 32;
+        constexpr unsigned int yBlock = 32;
+        for(int x = 0; x < xSize; x += xBlock)
+            for(int y = 0; y < ySize; y += yBlock)
+                for(int xx = x; xx < std::min(xSize, x + xBlock); xx++)
+                    for(int yy = y; yy < std::min(ySize, y + yBlock); yy++)
+                        graphEdges[layerIdx][xx][yy].capacity = parser.gcell_edge_capaicty[layerIdx][yy][xx];
     }
-    
 }
 
-utils::IntervalT<int> GridGraph::rangeSearchGridlines(const unsigned dimension, const utils::IntervalT<DBU>& locInterval) const {
-    utils::IntervalT<int> range;
-    range.low = lower_bound(gridlines[dimension].begin(), gridlines[dimension].end(), locInterval.low) - gridlines[dimension].begin();
-    range.high = lower_bound(gridlines[dimension].begin(), gridlines[dimension].end(), locInterval.high) - gridlines[dimension].begin();
-    if (range.high >= gridlines[dimension].size()) {
-        range.high = gridlines[dimension].size() - 1;
-    } else if (gridlines[dimension][range.high] > locInterval.high) {
-        range.high -= 1;
-    }
-    return range;
-}
+// utils::IntervalT<int> GridGraph::rangeSearchGridlines(const unsigned dimension, const utils::IntervalT<DBU>& locInterval) const {
+//     utils::IntervalT<int> range;
+//     range.low = lower_bound(gridlines[dimension].begin(), gridlines[dimension].end(), locInterval.low) - gridlines[dimension].begin();
+//     range.high = lower_bound(gridlines[dimension].begin(), gridlines[dimension].end(), locInterval.high) - gridlines[dimension].begin();
+//     if (range.high >= gridlines[dimension].size()) {
+//         range.high = gridlines[dimension].size() - 1;
+//     } else if (gridlines[dimension][range.high] > locInterval.high) {
+//         range.high -= 1;
+//     }
+//     return range;
+// }
   
-utils::IntervalT<int> GridGraph::rangeSearchRows(const unsigned dimension, const utils::IntervalT<DBU>& locInterval) const {
-    const auto& lineRange = rangeSearchGridlines(dimension, locInterval);
-    return {
-        gridlines[dimension][lineRange.low] == locInterval.low ? lineRange.low : max(lineRange.low - 1, 0),
-        gridlines[dimension][lineRange.high] == locInterval.high ? lineRange.high - 1 : min(lineRange.high, static_cast<int>(getSize(dimension)) - 1)
-    };
-}
+// utils::IntervalT<int> GridGraph::rangeSearchRows(const unsigned dimension, const utils::IntervalT<DBU>& locInterval) const {
+//     const auto& lineRange = rangeSearchGridlines(dimension, locInterval);
+//     return {
+//         gridlines[dimension][lineRange.low] == locInterval.low ? lineRange.low : max(lineRange.low - 1, 0),
+//         gridlines[dimension][lineRange.high] == locInterval.high ? lineRange.high - 1 : min(lineRange.high, static_cast<int>(getSize(dimension)) - 1)
+//     };
+// }
 
-utils::BoxT<DBU> GridGraph::getCellBox(utils::PointT<int> point) const {
-    return {
-        getGridline(0, point.x), getGridline(1, point.y),
-        getGridline(0, point.x + 1), getGridline(1, point.y + 1)
-    };
-}
+// utils::BoxT<DBU> GridGraph::getCellBox(utils::PointT<int> point) const {
+//     return {
+//         getGridline(0, point.x), getGridline(1, point.y),
+//         getGridline(0, point.x + 1), getGridline(1, point.y + 1)
+//     };
+// }
 
-utils::BoxT<int> GridGraph::rangeSearchCells(const utils::BoxT<DBU>& box) const {
-    return {rangeSearchRows(0, box[0]), rangeSearchRows(1, box[1])};
-}
+// utils::BoxT<int> GridGraph::rangeSearchCells(const utils::BoxT<DBU>& box) const {
+//     return {rangeSearchRows(0, box[0]), rangeSearchRows(1, box[1])};
+// }
 
-DBU GridGraph::getEdgeLength(unsigned direction, unsigned edgeIndex) const {
-    return gridCenters[direction][edgeIndex + 1] - gridCenters[direction][edgeIndex];
-}
+// DBU GridGraph::getEdgeLength(unsigned direction, unsigned edgeIndex) const {
+//     return gridCenters[direction][edgeIndex + 1] - gridCenters[direction][edgeIndex];
+// }
 
 inline double GridGraph::logistic(const CapacityT& input, const double slope) const {
     return 1.0 / (1.0 + exp(input * slope));
@@ -322,7 +298,6 @@ void GridGraph::selectAccessPoints(GRNet& net, robin_hood::unordered_map<uint64_
     for (const auto& accessPoints : net.getPinAccessPoints()) {
         std::pair<int, int> bestAccessDist = {0, std::numeric_limits<int>::max()};
         int bestIndex = -1;
-        // log()<<"accessPoints.size(): "<<accessPoints.size()<<std::endl;
         for (int index = 0; index < accessPoints.size(); index++) {
             const auto& point = accessPoints[index];
             int accessibility = 0;

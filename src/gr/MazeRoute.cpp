@@ -1,6 +1,8 @@
 #include <queue>
 #include "MazeRoute.h"
 
+using std::vector;
+
 void SparseGraph::init(GridGraphView<CostT>& wireCostView, SparseGrid& grid) {
     // 0. Create pseudo pins
     robin_hood::unordered_map<uint64_t, std::pair<utils::PointT<int>, utils::IntervalT<int>>> selectedAccessPoints;
@@ -195,7 +197,7 @@ std::shared_ptr<SteinerTreeNode> MazeRoute::getSteinerTree() const {
         return tree;
     }
     
-    vector<bool> visited(net.getNumPins(), false);
+    // vector<bool> visited(net.getNumPins(), false);
     robin_hood::unordered_map<int, std::shared_ptr<SteinerTreeNode>> created;
     for (auto& solution : solutions) {
         std::shared_ptr<Solution> temp = solution;

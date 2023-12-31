@@ -1,8 +1,8 @@
 #pragma once
-#include "global.h"
 #include "GridGraph.h"
 #include "GRNet.h"
 #include "PatternRoute.h"
+#include <array>
 
 struct SparseGrid {
     utils::PointT<int> interval;
@@ -22,9 +22,7 @@ struct SparseGrid {
 
 class SparseGraph {
 public:
-    // SparseGraph(GRNet& _net, const GridGraph& graph3d, const Parameters& param):
-    //     net(_net), gridGraph(graph3d), parameters(param) {}
-    SparseGraph(GRNet& _net, const GridGraph& graph3d, const ParametersISPD24& param):
+    SparseGraph(GRNet& _net, const GridGraph& graph3d, const Parameters& param):
         net(_net), gridGraph(graph3d), parameters(param) {}
     void init(GridGraphView<CostT>& wireCostView, SparseGrid& grid);
     int getNumVertices() const { return vertices.size(); }
@@ -40,23 +38,22 @@ public:
     GRPoint getPoint(const int vertex) const { return vertices[vertex]; }
     
 private:
-    // const Parameters& parameters;
-    const ParametersISPD24& parameters;
+    const Parameters& parameters;
     const GridGraph& gridGraph;   
     GRNet& net;
     
-    vector<std::pair<utils::PointT<int>, utils::IntervalT<int>>> pseudoPins;
+    std::vector<std::pair<utils::PointT<int>, utils::IntervalT<int>>> pseudoPins;
     
-    vector<int> xs;
-    vector<int> ys;
+    std::vector<int> xs;
+    std::vector<int> ys;
     
-    vector<GRPoint> vertices;
-    vector<std::array<int, 3>> edges;
-    vector<std::array<CostT, 3>> costs;
-    // robin_hood::unordered_map<int, vector<int>> vertexPins;
-    // vector<vector<int>> pinVertices;
+    std::vector<GRPoint> vertices;
+    std::vector<std::array<int, 3>> edges;
+    std::vector<std::array<CostT, 3>> costs;
+    // robin_hood::unordered_map<int, std::vector<int>> vertexPins;
+    // std::vector<std::vector<int>> pinVertices;
     robin_hood::unordered_map<int, int> vertexPin;
-    vector<int> pinVertex;
+    std::vector<int> pinVertex;
     
     inline int getVertexIndex(int direction, int xi, int yi) const {
         return direction * xs.size() * ys.size() + yi * xs.size() + xi;
@@ -73,9 +70,7 @@ struct Solution {
 
 class MazeRoute {
 public:
-    // MazeRoute(GRNet& _net, const GridGraph& graph3d, const Parameters& param):
-    //     net(_net), gridGraph(graph3d), parameters(param), graph(_net, graph3d, param) {}
-    MazeRoute(GRNet& _net, const GridGraph& graph3d, const ParametersISPD24& param):
+    MazeRoute(GRNet& _net, const GridGraph& graph3d, const Parameters& param):
         net(_net), gridGraph(graph3d), parameters(param), graph(_net, graph3d, param) {}
     
     void run();
@@ -85,11 +80,10 @@ public:
     std::shared_ptr<SteinerTreeNode> getSteinerTree() const;
     
 private: 
-    // const Parameters& parameters;
-    const ParametersISPD24& parameters;
+    const Parameters& parameters;
     const GridGraph& gridGraph;   
     GRNet& net;
     SparseGraph graph;
     
-    vector<std::shared_ptr<Solution>> solutions;
+    std::vector<std::shared_ptr<Solution>> solutions;
 };

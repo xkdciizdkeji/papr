@@ -1,7 +1,5 @@
 #pragma once
-#include "global.h"
-
-utils::BoxT<DBU> getBoxFromRsynBounds(const Bounds& bounds);
+#include "../utils/utils.h"
 
 class BoxOnLayer: public utils::BoxT<DBU> {
 public:
@@ -20,5 +18,5 @@ public:
 
     bool isConnected(const BoxOnLayer& rhs) const;
 
-    friend ostream& operator<<(ostream& os, const BoxOnLayer& box);
+    friend std::ostream& operator<<(std::ostream& os, const BoxOnLayer& box);
 };

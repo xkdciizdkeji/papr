@@ -1,5 +1,7 @@
 #include "PatternRoute.h"
 
+using std::vector;
+
 void SteinerTreeNode::preorder(
     std::shared_ptr<SteinerTreeNode> node, 
     std::function<void(std::shared_ptr<SteinerTreeNode>)> visit
@@ -59,15 +61,15 @@ void PatternRoute::constructSteinerTree() {
             steinerTree = std::make_shared<SteinerTreeNode>(accessPoint.second.first, accessPoint.second.second);
         }
     } else {
-        int xs[degree * 4];
-        int ys[degree * 4];
+        auto xs = std::make_unique<int[]>(degree * 4);
+        auto ys = std::make_unique<int[]>(degree * 4);
         int i = 0;
         for (auto& accessPoint : selectedAccessPoints) {
             xs[i] = accessPoint.second.first.x;
             ys[i] = accessPoint.second.first.y;
             i++;
         }
-        Tree flutetree = flute(degree, xs, ys, ACCURACY);
+        Tree flutetree = flute(degree, xs.get(), ys.get(), ACCURACY);
         const int numBranches = degree + degree - 2;
         vector<utils::PointT<int>> steinerPoints;
         steinerPoints.reserve(numBranches);
@@ -590,8 +592,8 @@ void PatternRoute::calculateRoutingCosts(std::shared_ptr<PatternRoutingNode>& no
         viaCosts[layerIndex] = viaCosts[layerIndex - 1] + gridGraph.getViaCost(layerIndex - 1, *node);
     }
     utils::IntervalT<int> fixedLayers = node->fixedLayers;
-    fixedLayers.low = min(fixedLayers.low, static_cast<int>(gridGraph.getNumLayers()) - 1);
-    fixedLayers.high = max(fixedLayers.high, parameters.min_routing_layer);
+    fixedLayers.low = std::min(fixedLayers.low, static_cast<int>(gridGraph.getNumLayers()) - 1);
+    fixedLayers.high = std::max(fixedLayers.high, parameters.min_routing_layer);
     
     for (int lowLayerIndex = 0; lowLayerIndex <= fixedLayers.low; lowLayerIndex++) {
         vector<CostT> minChildCosts; 

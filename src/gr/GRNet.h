@@ -1,23 +1,24 @@
 #pragma once
-#include "global.h"
-#include "obj/Design.h"
-#include "obj/Parser.h"
-#include "GridGraph.h"
+// #include "../obj/Design.h"
+// #include "GridGraph.h"
+
+#include <vector>
+#include <string>
+#include "GRTree.h"
+#include "../utils/utils.h"
 
 class GRNet {
 public:
-    GRNet(const Net& baseNet, const Design& design, const GridGraph& gridGraph);
-    GRNet(PNet pnet);
-
-    bool overlap(GRNet net) const;
-
+    // GRNet(const Net& baseNet, const Design& design, const GridGraph& gridGraph);
+    GRNet(int index, const std::string &name, const std::vector<std::vector<std::tuple<int, int, int>>> &pinAccessPoints);
+    
     int getIndex() const { return index; }
     std::string getName() const { return name; }
     int getNumPins() const { return pinAccessPoints.size(); }
-    const vector<vector<GRPoint>>& getPinAccessPoints() const { return pinAccessPoints; }
+    const std::vector<std::vector<GRPoint>>& getPinAccessPoints() const { return pinAccessPoints; }
     const utils::BoxT<int>& getBoundingBox() const { return boundingBox; }
     const std::shared_ptr<GRTreeNode>& getRoutingTree() const { return routingTree; }
-    // void getGuides(vector<std::pair<int, utils::BoxT<int>>>& guides) const;
+    // void getGuides(std::vector<std::pair<int, utils::BoxT<int>>>& guides) const;
     
     void setRoutingTree(std::shared_ptr<GRTreeNode> tree) { routingTree = tree; }
     void clearRoutingTree() { routingTree = nullptr; }
@@ -25,7 +26,7 @@ public:
 private:
     int index;
     std::string name;
-    vector<vector<GRPoint>> pinAccessPoints;
+    std::vector<std::vector<GRPoint>> pinAccessPoints; // 每个PIN有多个GRPoint选择
     utils::BoxT<int> boundingBox;
     std::shared_ptr<GRTreeNode> routingTree;
 };
