@@ -20,7 +20,7 @@ $ cmake --build build
 **Step 3:** use the executable file
 ```bash
 $ cd ./build/
-$ ./route [path_to_cap_file] [path_to_net_file] [path_to_output_file]
+$ ./route [path_to_cap_file] [path_to_net_file] [path_to_output_file] [num_threads]
 ```
 ## 2. Dependencies
 
