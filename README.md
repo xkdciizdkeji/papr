@@ -2,7 +2,7 @@
 
 **Step 1:** Download the source code. For example,
 ```bash
-$ git clone -b ispd24-lite https://github.com/flwave/gr_gpu.git
+$ git clone -b gr_multithread https://github.com/flwave/gr_gpu.git
 ```
 
 **Step 2:** build by cmake
