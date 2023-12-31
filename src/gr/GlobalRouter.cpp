@@ -36,34 +36,23 @@ void GlobalRouter::route() {
     for (const auto& net : nets) netIndices.push_back(net.getIndex());
     sortNetIndices(netIndices);
 
-    std::ofstream  afile;
-    afile.open("time", std::ios::app);
-
     vector<SingleNetRouter> routers;
     routers.reserve(netIndices.size());
 
-    auto t_batch_begin = std::chrono::high_resolution_clock::now();
     for (auto id : netIndices) routers.emplace_back(nets[id]); 
     vector<vector<int>> batches = getBatches(routers,netIndices);
-    double t_batch = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t_batch_begin).count();
-    afile <<t_batch<<" ";
     
     // Stage 1: Pattern routing
     n1 = netIndices.size();
     PatternRoute::readFluteLUT();
     log() << "stage 1: pattern routing" << std::endl;
     
-    auto t_constructSteinerTree_begin = std::chrono::high_resolution_clock::now();
     std::unordered_map<int,PatternRoute> PatternRoutes;
     for (const int netIndex : netIndices) {
         PatternRoute patternRoute(nets[netIndex], gridGraph, parameters);
         patternRoute.constructSteinerTree();
         PatternRoutes.insert(std::make_pair(netIndex,patternRoute));
     }
-    double t_constructSteinerTree = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t_constructSteinerTree_begin).count();
-    afile <<t_constructSteinerTree<<" ";
-
-    auto t_patternRoute_begin = std::chrono::high_resolution_clock::now();
     
     std::mutex mtx;
     for (const vector<int>& batch : batches) {
@@ -76,8 +65,6 @@ void GlobalRouter::route() {
             mtx.unlock();
         });
     }
-    double t_patternRoute = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t_patternRoute_begin).count();
-    afile <<t_patternRoute<<" ";
     // for (const int netIndex : netIndices) {
     //     PatternRoute patternRoute(nets[netIndex], gridGraph, parameters);
     //     patternRoute.constructSteinerTree();
@@ -204,9 +191,7 @@ void GlobalRouter::route() {
           << std::setprecision(3) << std::fixed << t1 << " s, "
           << std::setprecision(3) << std::fixed << t2 << " s, "
           << std::setprecision(3) << std::fixed << t3 << " s\n";
-    
-    afile <<t1<<" "<<t2<<" "<<t3<<" ";
-    afile.close();
+          
     printStatistics();
     if (parameters.write_heatmap) gridGraph.write();
 }
@@ -423,10 +408,7 @@ void GlobalRouter::printStatistics() const {
     log() << "overflow cost:            " << overflowCost << std::endl;
     log() << "total cost(ispd24 score): " << totalCost << std::endl;
     logeol();
-
-    std::ofstream  afile;
-    afile.open("time", std::ios::app);
-    afile<<totalCost<<"\n";
+    
     // log() << "min resource: " << minResource << std::endl;
     // log() << "bottleneck:   " << bottleneck << std::endl;
 
