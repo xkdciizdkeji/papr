@@ -17,6 +17,18 @@ $ cd ./gr_gpu/
 $ cmake -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_CUDA=ON
 $ cmake --build build
 ```
+**Step 2":** build by cmake (enable iss sort)
+```bash
+$ cd ./gr_gpu/
+$ cmake -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_ISSSORT=ON
+$ cmake --build build
+```
+**Step 2":** build by cmake (enable iss sort and cuda)
+```bash
+$ cd ./gr_gpu/
+$ cmake -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_ISSSORT=ON -DENABLE_CUDA=ON
+$ cmake --build build
+```
 **Step 3:** use the executable file
 ```bash
 $ cd ./build/
