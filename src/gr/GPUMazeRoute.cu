@@ -1,6 +1,8 @@
 #ifdef ENABLE_CUDA
 #include "GPUMazeRoute.h"
 #include <cuda_runtime.h>
+#include <stack>
+#include <array>
 #include "../utils/helper_cuda.h"
 #include "../utils/helper_math.h"
 
@@ -707,8 +709,6 @@ void GPUMazeRoute::route(const std::vector<int> &netIndices, int sweepTurns, int
 void GPUMazeRoute::commit(const std::vector<int> &netIndices)
 {
   // TODO: bactching and multi-threading
-
-  auto treeMap = std::make_unique<int[]>(LAYER * N * N);
   for (int netId : netIndices)
   {
     if(cpuIsRoutedNet[netId])
@@ -718,8 +718,7 @@ void GPUMazeRoute::commit(const std::vector<int> &netIndices)
       if (oldTree != nullptr)
         gridGraph.commitTree(oldTree, true);
       // commit new tree
-      memset(treeMap.get(), 0, LAYER * N * N * sizeof(int));
-      auto newTree = extractGRTree(treeMap.get(), cpuRoutes + cpuRoutesOffset[netId], cpuRootIndices[netId]);
+      auto newTree = extractGRTree(cpuRoutes + cpuRoutesOffset[netId], cpuRootIndices[netId]);
       nets[netId].setRoutingTree(newTree);
       gridGraph.commitTree(newTree, false);
 
@@ -763,6 +762,22 @@ void GPUMazeRoute::commit(const std::vector<int> &netIndices)
       //   if(!isRoutePin)
       //   {
       //     log() << "Gamer error: net(id=" << netId << ") is not routed\n";
+      //     std::ofstream errorLog(std::to_string(netId) + ".txt");
+      //     errorLog << DIRECTION << " " << N << " " << X << " " << Y << " " << LAYER << "\n";
+      //     errorLog << "\n";
+
+      //     const int *routes = cpuRoutes + cpuRoutesOffset[netId];
+      //     for(int i = 0; i < routes[0]; i += 2)
+      //       errorLog << routes[1 + i] << " " << routes[2 + i] << "\n";
+      //     errorLog << "\n";
+
+      //     for(const auto &accessPoints : nets[netId].getPinAccessPoints())
+      //     {
+      //       for(const auto &p : accessPoints)
+      //         errorLog << xyzToIdx(p.x, p.y, p.layerIdx, DIRECTION, N) << " ";
+      //       errorLog << "\n";
+      //     }
+      //     errorLog << "\n";
       //     break;
       //   }
       // }
@@ -861,111 +876,130 @@ std::pair<std::vector<int>, std::vector<int>> GPUMazeRoute::batching(const std::
   return std::make_pair(std::move(batchSizes), std::move(netIndicesToRoute));
 }
 
-std::shared_ptr<GRTreeNode> GPUMazeRoute::extractGRTree(int *treeMap, const int *routes, int rootIdx) const
+std::shared_ptr<GRTreeNode> GPUMazeRoute::extractGRTree(const int *routes, int rootIdx) const
 {
-  // 假设treeMap全设为0
+  auto [rootX, rootY, rootZ] = idxToXYZ(rootIdx, DIRECTION, N);
+  auto root = std::make_shared<GRTreeNode>(rootZ, rootX, rootY);
+  if (routes[0] < 2)
+    return root;
 
-  // TreeMap用到的常量
-  constexpr int TREEMAP_NODE_BIT = 1;
-  constexpr int TREEMAP_LEFT_BIT = 1 << 1;
-  constexpr int TREEMAP_RIGHT_BIT = 1 << 2;
-  constexpr int TREEMAP_DOWN_BIT = 1 << 3;
-  constexpr int TREEMAP_UP_BIT = 1 << 4;
-
-  // TreeDesc用到的常量
-  constexpr int TREEDESC_ROOT_NODE = 1;
-  constexpr int TREEDESC_FROM_LEFT = 2;
-  constexpr int TREEDESC_FROM_RIGHT = 3;
-  constexpr int TREEDESC_FROM_UP = 4;
-  constexpr int TREEDESC_FROM_DOWN = 5;
-
-  // 在TreeMap上标记
+  // 收集所有线段
+  std::vector<std::pair<int3, int3>> segments;
+  segments.reserve(routes[0] / 2);
   for (int i = 0; i < routes[0]; i += 2)
-  {
-    int startIdx = routes[i + 1];
-    int endIdx = routes[i + 2];
-    auto [startX, startY, startZ] = idxToXYZ(startIdx, DIRECTION, N);
-    auto [endX, endY, endZ] = idxToXYZ(endIdx, DIRECTION, N);
-    if (startZ == endZ) // wire
-    {
-      // 标记中间点
-      for (int j = startIdx + 1; j <= endIdx - 1; j++)
-        treeMap[j] |= (TREEMAP_LEFT_BIT | TREEMAP_RIGHT_BIT);
-      // 标记起点
-      treeMap[startIdx] |= (TREEMAP_NODE_BIT | TREEMAP_RIGHT_BIT);
-      // 标记终点
-      treeMap[endIdx] |= (TREEMAP_NODE_BIT | TREEMAP_LEFT_BIT);
-    }
-    else // via
-    {
-      // 标记中间点
-      for (int l = startZ + 1, x = startX, y = startY; l <= endZ - 1; l++)
-        treeMap[xyzToIdx(x, y, l, DIRECTION, N)] |= (TREEMAP_DOWN_BIT | TREEMAP_UP_BIT);
-      // 标记起点
-      treeMap[startIdx] |= (TREEMAP_NODE_BIT | TREEMAP_UP_BIT);
-      // 标记终点
-      treeMap[endIdx] |= (TREEMAP_NODE_BIT | TREEMAP_DOWN_BIT);
-    }
-  }
+    segments.emplace_back(idxToXYZ(routes[1 + i], DIRECTION, N), idxToXYZ(routes[2 + i], DIRECTION, N));
 
-  // 根据treeMap构造GRTree
-  std::vector<std::shared_ptr<GRTreeNode>> allnodes;
-  std::vector<int> allnodesIdx;
-  std::vector<int> allnodesFrom;
-  auto addNewNode = [&](int newNodeIdx, int newNodeFrom, std::shared_ptr<GRTreeNode> parent)
+  // 线段相交
+  auto intersect = [&](const int3 &s1, const int3 &e1, const int3 &s2, const int3 &e2)
   {
-    auto [x, y, z] = idxToXYZ(newNodeIdx, DIRECTION, N);
-    auto newNode = std::make_shared<GRTreeNode>(z, x, y);
-    allnodes.push_back(newNode);
-    allnodesIdx.push_back(newNodeIdx);
-    allnodesFrom.push_back(newNodeFrom);
-    if (parent != nullptr)
-      parent->children.push_back(newNode);
+    int3 p = max(s1, s2);
+    int3 q = min(e1, e2);
+    if (p.x == q.x && p.y == q.y && p.z == q.z)
+      return std::make_pair(true, p);
+    else
+      return std::make_pair(false, p);
   };
-  // root
-  addNewNode(rootIdx, TREEDESC_ROOT_NODE, nullptr);
-  // bfs
-  for (int i = 0; i < allnodes.size(); i++)
+  // 收集所有端点、交点
+  auto hash = [&](const int3 &p)
   {
-    auto currNode = allnodes[i];
-    int currIdx = allnodesIdx[i];
-    int currFrom = allnodesFrom[i];
-    // LEFT
-    if ((treeMap[currIdx] & TREEMAP_LEFT_BIT) && (currFrom != TREEDESC_FROM_LEFT))
+    return std::hash<int>{}(xyzToIdx(p.x, p.y, p.z, DIRECTION, N));
+  };
+  auto comp = [&](const int3 &p, const int3 &q)
+  {
+    return p.x == q.x && p.y == q.y && p.z == q.z;
+  };
+  std::unordered_set<int3, decltype(hash), decltype(comp)> allpoints(4 * routes[0], hash, comp);
+  for (int i = 0; i < segments.size(); i++)
+  {
+    allpoints.insert(segments[i].first);
+    allpoints.insert(segments[i].second);
+    for (int j = i + 1; j < segments.size(); j++)
     {
-      int leftIdx = currIdx - 1;
-      while (!(treeMap[leftIdx] & TREEMAP_NODE_BIT))
-        leftIdx--;
-      addNewNode(leftIdx, TREEDESC_FROM_RIGHT, currNode);
-    }
-    // RIGHT
-    if ((treeMap[currIdx] & TREEMAP_RIGHT_BIT) && (currFrom != TREEDESC_FROM_RIGHT))
-    {
-      int rightIdx = currIdx + 1;
-      while (!(treeMap[rightIdx] & TREEMAP_NODE_BIT))
-        rightIdx++;
-      addNewNode(rightIdx, TREEDESC_FROM_LEFT, currNode);
-    }
-    // UP
-    if ((treeMap[currIdx] & TREEMAP_UP_BIT) && (currFrom != TREEDESC_FROM_UP))
-    {
-      int z = currNode->layerIdx;
-      int upIdx = xyzToIdx(currNode->x, currNode->y, ++z, DIRECTION, N);
-      while (!(treeMap[upIdx] & TREEMAP_NODE_BIT))
-        upIdx = xyzToIdx(currNode->x, currNode->y, ++z, DIRECTION, N);
-      addNewNode(upIdx, TREEDESC_FROM_DOWN, currNode);
-    }
-    // DOWN
-    if ((treeMap[currIdx] & TREEMAP_DOWN_BIT) && (currFrom != TREEDESC_FROM_DOWN))
-    {
-      int z = currNode->layerIdx;
-      int downIdx = xyzToIdx(currNode->x, currNode->y, --z, DIRECTION, N);
-      while (!(treeMap[downIdx] & TREEMAP_NODE_BIT))
-        downIdx = xyzToIdx(currNode->x, currNode->y, --z, DIRECTION, N);
-      addNewNode(downIdx, TREEDESC_FROM_UP, currNode);
+      auto [flg, p] = intersect(segments[i].first, segments[i].second, segments[j].first, segments[j].second);
+      if (flg)
+        allpoints.insert(p);
     }
   }
-  return allnodes[0];
+  // 检查每一个原始线段，看是否能拆成更小的线段
+  std::vector<std::pair<int3, int3>> fineSegments;
+  for (const auto &[s, e] : segments)
+  {
+    std::vector<int3> interpoints;
+    for (const auto &p : allpoints)
+    {
+      if (s.x <= p.x && p.x <= e.x &&
+          s.y <= p.y && p.y <= e.y &&
+          s.z <= p.z && p.z <= e.z)
+        interpoints.push_back(p);
+    }
+    std::sort(interpoints.begin(), interpoints.end(), [](const int3 &left, const int3 &right)
+              { return (left.x < right.x) || (left.x == right.x && left.y < right.y) || (left.x == right.x && left.y == right.y && left.z < right.z); });
+    for (int i = 0; i < interpoints.size() - 1; i++)
+      fineSegments.emplace_back(interpoints[i], interpoints[i + 1]);
+  }
+  // 建立连接
+  std::unordered_map<int3, std::array<int3, 4>, decltype(hash), decltype(comp)> linkGraph(allpoints.size(), hash, comp);
+  for (const auto &p : allpoints)
+  {
+    std::array<int3, 4> initlink = {make_int3(-1, -1, -1), make_int3(-1, -1, -1), make_int3(-1, -1, -1), make_int3(-1, -1, -1)};
+    linkGraph.emplace(p, initlink);
+  }
+  for (const auto &[s, e] : fineSegments)
+  {
+    if (s.z == e.z)
+    {
+      if (s.x < e.x || s.y < e.y)
+      {
+        linkGraph.at(s)[0] = e;
+        linkGraph.at(e)[1] = s;
+      }
+      else
+      {
+        linkGraph.at(s)[1] = e;
+        linkGraph.at(e)[0] = s;
+      }
+    }
+    else
+    {
+      if (s.z < e.z)
+      {
+        linkGraph.at(s)[2] = e;
+        linkGraph.at(e)[3] = s;
+      }
+      else
+      {
+        linkGraph.at(s)[3] = e;
+        linkGraph.at(e)[2] = s;
+      }
+    }
+  }
+  // extract GRTree using `linkGraph`
+  std::unordered_map<int3, bool, decltype(hash), decltype(comp)> mark(allpoints.size(), hash, comp);
+  for (const auto &p : allpoints)
+    mark.emplace(p, false);
+  std::stack<std::shared_ptr<GRTreeNode>> stack;
+  stack.push(root);
+  mark.at(idxToXYZ(rootIdx, DIRECTION, N)) = true;
+  while (!stack.empty())
+  {
+    auto node = stack.top();
+    stack.pop();
+    const auto &link = linkGraph.at(make_int3(node->x, node->y, node->layerIdx));
+    for (const int3 &p : link)
+    {
+      if (0 <= p.x && p.x < N &&
+          0 <= p.y && p.y < N &&
+          0 <= p.z && p.z < N &&
+          mark.at(p) == false)
+      {
+        auto child = std::make_shared<GRTreeNode>(p.z, p.x, p.y);
+        node->children.push_back(child);
+        stack.push(child);
+        mark.at(p) = true;
+      }
+    }
+  }
+  return root;
 }
 
 std::vector<int> GPUMazeRoute::selectAccessPoints(const GRNet &net) const
