@@ -878,124 +878,127 @@ std::pair<std::vector<int>, std::vector<int>> GPUMazeRoute::batching(const std::
 
 std::shared_ptr<GRTreeNode> GPUMazeRoute::extractGRTree(const int *routes, int rootIdx) const
 {
-  auto [rootX, rootY, rootZ] = idxToXYZ(rootIdx, DIRECTION, N);
+    auto [rootX, rootY, rootZ] = idxToXYZ(rootIdx, DIRECTION, N);
   auto root = std::make_shared<GRTreeNode>(rootZ, rootX, rootY);
   if (routes[0] < 2)
     return root;
 
-  // 收集所有线段
-  std::vector<std::pair<int3, int3>> segments;
-  segments.reserve(routes[0] / 2);
-  for (int i = 0; i < routes[0]; i += 2)
-    segments.emplace_back(idxToXYZ(routes[1 + i], DIRECTION, N), idxToXYZ(routes[2 + i], DIRECTION, N));
-
-  // 线段相交
-  auto intersect = [&](const int3 &s1, const int3 &e1, const int3 &s2, const int3 &e2)
-  {
-    int3 p = max(s1, s2);
-    int3 q = min(e1, e2);
-    if (p.x == q.x && p.y == q.y && p.z == q.z)
-      return std::make_pair(true, p);
-    else
-      return std::make_pair(false, p);
-  };
-  // 收集所有端点、交点
   auto hash = [&](const int3 &p)
   {
     return std::hash<int>{}(xyzToIdx(p.x, p.y, p.z, DIRECTION, N));
   };
-  auto comp = [&](const int3 &p, const int3 &q)
+  auto equal = [&](const int3 &p, const int3 &q)
   {
     return p.x == q.x && p.y == q.y && p.z == q.z;
   };
-  std::unordered_set<int3, decltype(hash), decltype(comp)> allpoints(4 * routes[0], hash, comp);
-  for (int i = 0; i < segments.size(); i++)
-  {
-    allpoints.insert(segments[i].first);
-    allpoints.insert(segments[i].second);
-    for (int j = i + 1; j < segments.size(); j++)
+  auto compw = [&](const int3 &p, const int3 &q){
+    if(p.z == q.z)
     {
-      auto [flg, p] = intersect(segments[i].first, segments[i].second, segments[j].first, segments[j].second);
-      if (flg)
-        allpoints.insert(p);
+      if((p.z & 1) ^ DIRECTION) // Y-X
+        return (p.y < q.y) || (p.y == q.y && p.x < q.x);
+      else
+        return (p.x < q.x) || (p.x == q.x && p.y < q.y);
+    }
+    else
+      return p.z < q.z;
+  };
+  auto compv = [&](const int3 &p, const int3 &q)
+  {
+    return (p.x < q.x) || (p.x == q.x && p.y < q.y) || (p.x == q.x && p.y == q.y && p.z < q.z);
+  };
+  // 收集所有交点
+  std::vector<int3> allpoints;
+  for(int i = 0; i < routes[0]; i += 2)
+  {
+    allpoints.push_back(idxToXYZ(routes[1 + i], DIRECTION, N));
+    allpoints.push_back(idxToXYZ(routes[2 + i], DIRECTION, N));
+  }
+  std::sort(allpoints.begin(), allpoints.end(), compw);
+  auto last = std::unique(allpoints.begin(), allpoints.end(), equal);
+  allpoints.erase(last, allpoints.end());
+  // 根据交点拆分线段
+  std::vector<std::pair<int3, int3>> segments;
+  for(int i = 0; i < routes[0]; i += 2)
+  {
+    int3 start = idxToXYZ(routes[1 + i], DIRECTION, N);
+    int3 end = idxToXYZ(routes[2 + i], DIRECTION, N);
+    if(start.z == end.z)
+    {
+      auto startIt = std::lower_bound(allpoints.begin(), allpoints.end(), start, compw);
+      auto endIt = std::upper_bound(allpoints.begin(), allpoints.end(), end, compw);
+      for(auto it = startIt, nextIt = startIt + 1; nextIt != endIt; it++, nextIt++)
+        segments.emplace_back(*it, *nextIt);
     }
   }
-  // 检查每一个原始线段，看是否能拆成更小的线段
-  std::vector<std::pair<int3, int3>> fineSegments;
-  for (const auto &[s, e] : segments)
+  std::sort(allpoints.begin(), allpoints.end(), compv);
+  for(int i = 0; i < routes[0]; i += 2)
   {
-    std::vector<int3> interpoints;
-    for (const auto &p : allpoints)
+    int3 start = idxToXYZ(routes[1 + i], DIRECTION, N);
+    int3 end = idxToXYZ(routes[2 + i], DIRECTION, N);
+    if(start.z != end.z)
     {
-      if (s.x <= p.x && p.x <= e.x &&
-          s.y <= p.y && p.y <= e.y &&
-          s.z <= p.z && p.z <= e.z)
-        interpoints.push_back(p);
+      auto startIt = std::lower_bound(allpoints.begin(), allpoints.end(), start, compv);
+      auto endIt = std::upper_bound(allpoints.begin(), allpoints.end(), end, compv);
+      for(auto it = startIt, nextIt = startIt + 1; nextIt != endIt; it++, nextIt++)
+        segments.emplace_back(*it, *nextIt);
     }
-    std::sort(interpoints.begin(), interpoints.end(), [](const int3 &left, const int3 &right)
-              { return (left.x < right.x) || (left.x == right.x && left.y < right.y) || (left.x == right.x && left.y == right.y && left.z < right.z); });
-    for (int i = 0; i < interpoints.size() - 1; i++)
-      fineSegments.emplace_back(interpoints[i], interpoints[i + 1]);
   }
   // 建立连接
-  std::unordered_map<int3, std::array<int3, 4>, decltype(hash), decltype(comp)> linkGraph(allpoints.size(), hash, comp);
+  std::unordered_map<int3, std::pair<bool, std::array<int3, 4>>, decltype(hash), decltype(equal)> linkGraph(allpoints.size(), hash, equal);
   for (const auto &p : allpoints)
   {
     std::array<int3, 4> initlink = {make_int3(-1, -1, -1), make_int3(-1, -1, -1), make_int3(-1, -1, -1), make_int3(-1, -1, -1)};
-    linkGraph.emplace(p, initlink);
+    linkGraph.emplace(std::piecewise_construct, std::forward_as_tuple(p), std::forward_as_tuple(false, initlink));
   }
-  for (const auto &[s, e] : fineSegments)
+  for (const auto &[s, e] : segments)
   {
     if (s.z == e.z)
     {
       if (s.x < e.x || s.y < e.y)
       {
-        linkGraph.at(s)[0] = e;
-        linkGraph.at(e)[1] = s;
+        linkGraph.at(s).second[0] = e;
+        linkGraph.at(e).second[1] = s;
       }
       else
       {
-        linkGraph.at(s)[1] = e;
-        linkGraph.at(e)[0] = s;
+        linkGraph.at(s).second[1] = e;
+        linkGraph.at(e).second[0] = s;
       }
     }
     else
     {
       if (s.z < e.z)
       {
-        linkGraph.at(s)[2] = e;
-        linkGraph.at(e)[3] = s;
+        linkGraph.at(s).second[2] = e;
+        linkGraph.at(e).second[3] = s;
       }
       else
       {
-        linkGraph.at(s)[3] = e;
-        linkGraph.at(e)[2] = s;
+        linkGraph.at(s).second[3] = e;
+        linkGraph.at(e).second[2] = s;
       }
     }
   }
   // extract GRTree using `linkGraph`
-  std::unordered_map<int3, bool, decltype(hash), decltype(comp)> mark(allpoints.size(), hash, comp);
-  for (const auto &p : allpoints)
-    mark.emplace(p, false);
   std::stack<std::shared_ptr<GRTreeNode>> stack;
   stack.push(root);
-  mark.at(idxToXYZ(rootIdx, DIRECTION, N)) = true;
+  linkGraph.at(idxToXYZ(rootIdx, DIRECTION, N)).first = true;
   while (!stack.empty())
   {
     auto node = stack.top();
     stack.pop();
-    const auto &link = linkGraph.at(make_int3(node->x, node->y, node->layerIdx));
+    const auto &link = linkGraph.at(make_int3(node->x, node->y, node->layerIdx)).second;
     for (const int3 &p : link)
     {
       if (0 <= p.x && p.x < N &&
           0 <= p.y && p.y < N &&
           0 <= p.z && p.z < N &&
-          mark.at(p) == false)
+          linkGraph.at(p).first == false)
       {
         auto child = std::make_shared<GRTreeNode>(p.z, p.x, p.y);
         node->children.push_back(child);
         stack.push(child);
-        mark.at(p) = true;
+        linkGraph.at(p).first = true;
       }
     }
   }
