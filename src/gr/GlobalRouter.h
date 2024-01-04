@@ -22,8 +22,14 @@ private:
     CostT unit_via_cost;
     std::vector<CostT> unit_length_short_costs;
     
-    void sortNetIndices(std::vector<int>& netIndices) const;
+    void sortNetIndices(std::vector<int>& netIndices) const; 
+    void sortNetIndicesD(std::vector<int> &netIndices) const;
+    void sortNetIndicesOFD(std::vector<int> &netIndices, std::vector<int> &netOverflow) const;
     void sortNetIndicesOFDALD(std::vector<int> &netIndices, std::vector<int> &netOverflow) const;
-    void getGuides(const GRNet &net, std::vector<std::pair<int, utils::BoxT<int>>> &guides);
+    void sortNetIndicesOLD(std::vector<int> &netIndices) const;
+    void sortNetIndicesOLI(std::vector<int> &netIndices) const;
+    void sortNetIndicesRandom(std::vector<int> &netIndices) const;
+    void getGuides(const GRNet &net, std::vector<std::pair<std::pair<int, int>, utils::BoxT<int>>> &guides);
+    // void getGuides(const GRNet &net, std::vector<std::pair<int, utils::BoxT<int>>> &guides);
     void printStatistics() const;
 };

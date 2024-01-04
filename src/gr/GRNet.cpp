@@ -67,3 +67,19 @@ GRNet::GRNet(int _index, const std::string &_name, const std::vector<std::vector
 //         }
 //     });
 // }
+
+bool GRNet::overlap(GRNet net) const{
+    utils::BoxT<int> otherBoundingBox= net.getBoundingBox();
+    int lx1=boundingBox.lx();
+    int ly1=boundingBox.ly();
+    int ux1=boundingBox.hx();
+    int uy1=boundingBox.hy();
+    int lx2=otherBoundingBox.lx();
+    int ly2=otherBoundingBox.ly();
+    int ux2=otherBoundingBox.hx();
+    int uy2=otherBoundingBox.hy();
+    // Determine whether two rectangles intersect
+    if (lx1 > ux2 || lx2 > ux1) return false;
+    if (ly1 > uy2 || ly2 > uy1) return false;
+    return true;
+}
