@@ -74,6 +74,29 @@ __host__ __device__ realT logistic(realT x, realT slope)
   return 1.f / (1.f + exp(x * slope));
 }
 
+template<class T, class U>
+__device__ T myAtomicAdd(T *address, U val)
+{
+  return atomicAdd(address, val);
+}
+
+template<class U>
+__device__ double myAtomicAdd(double *address, U val)
+{
+  unsigned long long old = *(unsigned long long *)address;
+  unsigned long long assumed;
+  do
+  {
+    assumed = old;
+    old = atomicCAS(
+      (unsigned long long *)address,
+      assumed,
+      __double_as_longlong(val + __longlong_as_double(assumed))
+    );
+  } while (assumed != old);
+  return __longlong_as_double(old);
+}
+
 // ------------------------------
 // CUDA Kernel
 // ------------------------------
@@ -351,7 +374,11 @@ __global__ void commitRoutes(realT *demand, const realT *hEdgeLengths, const rea
     if (startZ == endZ) // wire
     {
       for (int j = startIdx + 1; j <= endIdx; j++)
+#if __CUDA_ARCH__ >= 600
         atomicAdd(demand + j, reverse ? -1.f : 1.f);
+#else
+        myAtomicAdd(demand + j, reverse ? -1.f : 1.f);
+#endif
     }
     else // vias
     {
@@ -364,9 +391,17 @@ __global__ void commitRoutes(realT *demand, const realT *hEdgeLengths, const rea
         vd = (z == startZ || z == endZ ? vd : 2.f * vd);
         vd = reverse ? -vd : vd;
         if (leftEdgeLength > 0.f)
+#if __CUAD_ARCH__ >= 600
           atomicAdd(demand + tmpIdx, vd);
+#else
+          myAtomicAdd(demand + tmpIdx, vd);
+#endif
         if (rightEdgeLength > 0.f)
+#if __CUDA_ARCH__ >= 600
           atomicAdd(demand + tmpIdx + 1, vd);
+#else
+          myAtomicAdd(demand + tmpIdx + 1, vd);
+#endif
       }
     }
   }
