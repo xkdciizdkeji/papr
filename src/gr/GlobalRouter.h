@@ -8,7 +8,9 @@ public:
     GlobalRouter(const ISPD24Parser& parser, const Parameters& params);
     void route();
     void write(std::string guide_file = "");
-    
+
+    void update_nonstack_via_counter(unsigned net_idx, const std::vector<std::vector<int>> &via_loc, std::vector<std::vector<std::vector<int>>> &flag, std::vector<std::vector<std::vector<int>>> &nonstack_via_counter) const;
+
 private:
     const Parameters& parameters;
     GridGraph gridGraph;
