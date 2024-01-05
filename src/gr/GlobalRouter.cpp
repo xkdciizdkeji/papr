@@ -538,6 +538,7 @@ void GlobalRouter::printStatistics() const
         }
         overflow_cost += layer_overflows * 0.1; // gg.unit_overflow_cost();
         // log() << "Layer = " << z << " layer_nonstack_via_counter: "<<layer_nonstack_via_counter<< ", num_overflows = " << num_overflows << ", layer_overflows = " << layer_overflows << ", overflow cost = " << overflow_cost << std::endl;
+        log() << "Layer = " << z << ", num_overflows = " << num_overflows << ", layer_overflows = " << layer_overflows << ", overflow cost = " << overflow_cost << std::endl;
     }
 
     double via_cost_scale = 1.0;
