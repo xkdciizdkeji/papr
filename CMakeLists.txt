@@ -50,10 +50,11 @@ set(PATH_CUGR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 ###############
 # Source Code #
 ###############
-file(GLOB_RECURSE CUGR_HEADER_FILE ${PATH_CUGR}/*.h ${PATH_CUGR}/*.hpp)
 if(ENABLE_CUDA)
+  file(GLOB_RECURSE CUGR_HEADER_FILE ${PATH_CUGR}/*.h ${PATH_CUGR}/*.hpp ${PATH_CUGR}/*.cuh)
   file(GLOB_RECURSE CUGR_SOURCE_FILES ${PATH_CUGR}/*.c ${PATH_CUGR}/*.cpp ${PATH_CUGR}/*.cu)
 else()
+  file(GLOB_RECURSE CUGR_HEADER_FILE ${PATH_CUGR}/*.h ${PATH_CUGR}/*.hpp)
   file(GLOB_RECURSE CUGR_SOURCE_FILES ${PATH_CUGR}/*.c ${PATH_CUGR}/*.cpp)
 endif()
 
