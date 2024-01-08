@@ -1,5 +1,6 @@
 #ifdef ENABLE_CUDA
 #include "BasicGamer.cuh"
+#include <numeric>
 
 // --------------------------
 // cuda kernel
@@ -244,7 +245,7 @@ __global__ static void tracePath(realT *dist, int *prev, int *isRoutedPin, int *
 // --------------------------
 
 BasicGamer::BasicGamer(int DIRECTION, int N, int X, int Y, int LAYER, int maxNumPins)
-    : DIRECTION(DIRECTION), N(N), X(X), Y(Y), LAYER(LAYER), maxNumPins(maxNumPins)
+    : DIRECTION(DIRECTION), N(N), X(X), Y(Y), LAYER(LAYER), numPins(0), maxNumPins(maxNumPins)
 {
   devWireCostSum = cuda_make_unique<realT[]>(LAYER * N * N);
   devDist = cuda_make_unique<realT[]>(LAYER * N * N);
@@ -255,6 +256,14 @@ BasicGamer::BasicGamer(int DIRECTION, int N, int X, int Y, int LAYER, int maxNum
   devPinIndices = cuda_make_unique<int[]>(maxNumPins);
 
   checkCudaErrors(cudaMemset(devRoutes.get(), 0, maxNumPins * MAX_ROUTE_LEN_PER_PIN));
+}
+
+bool BasicGamer::getIsRouted() const
+{
+  std::vector<int> isRoutePin(numPins);
+  checkCudaErrors(cudaMemcpy(isRoutePin.data(), devIsRoutedPin.get(), numPins * sizeof(int), cudaMemcpyDeviceToHost));
+  return std::reduce(isRoutePin.begin(), isRoutePin.end(), 1, [](int x, int y)
+                     { return x & y; });
 }
 
 void BasicGamer::route(const std::vector<int> &pinIndices, int sweepTurns)
@@ -270,7 +279,7 @@ void BasicGamer::route(const std::vector<int> &pinIndices, int sweepTurns, const
   int lenY = box.height();
   int maxlen = std::max(lenX, lenY);
 
-  int numPins = static_cast<int>(pinIndices.size());
+  numPins = static_cast<int>(pinIndices.size());
   checkCudaErrors(cudaMemset(devIsRoutedPin.get(), 0, numPins * sizeof(int)));
   checkCudaErrors(cudaMemcpy(devPinIndices.get(), pinIndices.data(), numPins * sizeof(int), cudaMemcpyHostToDevice));
 

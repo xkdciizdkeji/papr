@@ -283,7 +283,6 @@ void GPUMazeRouter::route(const std::vector<int> &netIndices, int sweepTurns, in
   for (int i = 0; i < netIndices.size(); i++)
   {
     int netId = netIndices[i];
-    isRoutedNet[netId] = 0;
     std::vector<int> pinIndices = selectAccessPoints(nets[netId]);
     rootIndices[netId] = pinIndices.front();
     // 扫描范围
@@ -301,7 +300,10 @@ void GPUMazeRouter::route(const std::vector<int> &netIndices, int sweepTurns, in
     checkCudaErrors(cudaMemcpy(devAllRoutes.get() + allRoutesOffset[netId], devRoutes.get(), (allRoutesOffset[netId + 1] - allRoutesOffset[netId]) * sizeof(int), cudaMemcpyDeviceToDevice));
     commitRoutes<<<1, 1>>>(
         devDemand.get(), devAllRoutes.get(), devAllRoutesOffset.get(), devNetIndices.get() + i, numNets, 0, DIRECTION, N, X, Y, LAYER);
-    isRoutedNet[netId] = 1;
+    // isRoutedNet[netId] = 1;
+    isRoutedNet[netId] = basicGamer->getIsRouted();
+    if(!isRoutedNet[netId])
+      utils::log() << "gamer error: route net(id=" << netId << ") failed\n";
   }
   markOverflowNet<<<(numNets + 1023) / 1024, 1024>>>(
       devIsOverflowNet.get(), devDemand.get(), devCapacity.get(), devAllRoutes.get(), devAllRoutesOffset.get(), numNets, DIRECTION, N);

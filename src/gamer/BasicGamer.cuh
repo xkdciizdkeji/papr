@@ -12,21 +12,22 @@ public:
   void setWireCostMap(const cuda_shared_ptr<const realT[]> &wireCost) { devWireCost = wireCost; }
   void setViaCostMap(const cuda_shared_ptr<const realT[]> &viaCost) { devViaCost = viaCost; }
   cuda_shared_ptr<const int[]> getRoutes() const { return devRoutes; }
+  bool getIsRouted() const;
 
   void route(const std::vector<int> &pinIndices, int sweepTurns);
   void route(const std::vector<int> &pinIndices, int sweepTurns, const utils::BoxT<int> &box);
 
 private:
   int DIRECTION, N, X, Y, LAYER;
-  int maxNumPins;
-
-  cuda_unique_ptr<realT[]> devWireCostSum;
-  cuda_unique_ptr<realT[]> devDist;
-  cuda_unique_ptr<int[]> devPrev;
+  int numPins, maxNumPins;
 
   cuda_shared_ptr<int[]> devRoutes;
   cuda_unique_ptr<int[]> devIsRoutedPin;
   cuda_unique_ptr<int[]> devPinIndices;
+
+  cuda_unique_ptr<realT[]> devWireCostSum;
+  cuda_unique_ptr<realT[]> devDist;
+  cuda_unique_ptr<int[]> devPrev;
 
   cuda_shared_ptr<const realT[]> devWireCost;
   cuda_shared_ptr<const realT[]> devViaCost;

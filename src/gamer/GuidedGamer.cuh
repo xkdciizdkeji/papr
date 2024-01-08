@@ -3,7 +3,6 @@
 #define GPU_ROUTER_GUIDED_GAMER_H
 
 #include "gamer_utils.cuh"
-#include <unordered_map>
 
 class GuidedGamer
 {
@@ -13,6 +12,7 @@ public:
   void setWireCostMap(const cuda_shared_ptr<const realT[]> &wireCost) { devWireCost = wireCost; }
   void setViaCostMap(const cuda_shared_ptr<const realT[]> &viaCost) { devViaCost = viaCost; }
   cuda_shared_ptr<const int[]> getRoutes() const { return devRoutes; }
+  bool getIsRouted() const;
 
   void setGuide(const int *routes, int scaleX, int scaleY, int coarseN);
   void reserve(int nWires, int nRows, int nLongWires, int nWorkplace, int nViasegs);
@@ -21,7 +21,7 @@ public:
 
 private:
   int DIRECTION, N, X, Y, LAYER;
-  int maxNumPins;
+  int numPins, maxNumPins;
 
   int numWires, maxNumWires;
   int numRows, maxNumRows;

@@ -325,7 +325,7 @@ __global__ static void tracePath(realT *distAtRow, int *prevAtRow, int *routes, 
 // -------------------------
 
 GuidedGamer::GuidedGamer(int DIRECTION, int N, int X, int Y, int LAYER, int maxNumPins)
-    : DIRECTION(DIRECTION), N(N), X(X), Y(Y), LAYER(LAYER), maxNumPins(maxNumPins),
+    : DIRECTION(DIRECTION), N(N), X(X), Y(Y), LAYER(LAYER), numPins(0), maxNumPins(maxNumPins),
       numWires(0), maxNumWires(0), numRows(0), maxNumRows(0),
       numLongWires(0), maxNumLongWires(0), numWorkplace(0), maxNumWorkplace(0),
       numViasegs(0), maxNumViasegs(0), longWireEndRowsOffset(0)
@@ -335,6 +335,14 @@ GuidedGamer::GuidedGamer(int DIRECTION, int N, int X, int Y, int LAYER, int maxN
   devPinIndices = cuda_make_unique<int[]>(maxNumPins);
   devPinPositions = cuda_make_unique<int[]>(maxNumPins);
   devIdxPosMap = cuda_make_unique<int[]>(LAYER * N * N);
+}
+
+bool GuidedGamer::getIsRouted() const
+{
+  std::vector<int> isRoutePin(numPins);
+  checkCudaErrors(cudaMemcpy(isRoutePin.data(), devIsRoutedPin.get(), numPins * sizeof(int), cudaMemcpyDeviceToHost));
+  return std::reduce(isRoutePin.begin(), isRoutePin.end(), 1, [](int x, int y)
+                     { return x & y; });
 }
 
 void GuidedGamer::setGuide(const int *routes, int scaleX, int scaleY, int coarseN)
@@ -588,6 +596,10 @@ void GuidedGamer::route(const std::vector<int> &pinIndices, int sweepTurns)
     cleanDistPrev<<<(numRows * PACK_ROW_SIZE + 1023) / 1024, 1024>>>(devDistAtRow.get(), devPrevAtRow.get(), 0);
     checkCudaErrors(cudaDeviceSynchronize());
   }
+  std::vector<int> isRoutePin(pinIndices.size());
+  checkCudaErrors(cudaMemcpy(isRoutePin.data(), devIsRoutedPin.get(), pinIndices.size() * sizeof(int), cudaMemcpyDeviceToHost));
+  if(!std::reduce(isRoutePin.begin(), isRoutePin.end(), 1, [](int x, int y) { return x & y; }))
+    utils::log() << "warning: net is not routed\n";
   checkCudaErrors(cudaDeviceSynchronize());
 }
 #endif
