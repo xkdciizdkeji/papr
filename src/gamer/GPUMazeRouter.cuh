@@ -31,6 +31,7 @@ private:
   int N;
   int numNets;
   int maxNumPins;
+  int scaleX, scaleY;
 
   realT unitLengthWireCost;
   realT unitViaCost;

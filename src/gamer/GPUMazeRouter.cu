@@ -157,6 +157,10 @@ GPUMazeRouter::GPUMazeRouter(std::vector<GRNet> &nets, GridGraph &graph, const P
       { return std::max(x, y); },
       [](const GRNet &net)
       { return net.getNumPins(); });
+  // scaleX = (X + 511) / 512;
+  // scaleY = (Y + 511) / 512;
+  scaleX = 1;
+  scaleY = 1;
 
   unitLengthWireCost = gridGraph.getUnitLengthWireCost();
   unitViaCost = gridGraph.getUnitViaCost();
@@ -269,13 +273,36 @@ GPUMazeRouter::GPUMazeRouter(std::vector<GRNet> &nets, GridGraph &graph, const P
   checkCudaErrors(cudaMemcpy(isOverflowNet.data(), devIsOverflowNet.get(), numNets * sizeof(int), cudaMemcpyDeviceToHost));
 
   // rotuer
-  basicGamer = std::make_unique<BasicGamer>(DIRECTION, N, X, Y, LAYER, maxNumPins);
-  basicGamer->setWireCostMap(devWireCost);
-  basicGamer->setViaCostMap(devViaCost);
+  if(scaleX > 1 || scaleY > 1)
+  {
+    gridScaler = std::make_unique<GridScaler>(DIRECTION, N, X, Y, LAYER, scaleX, scaleY);
+    gridScaler->setWireCostMap(devWireCost);
+    gridScaler->setViaCostMap(devViaCost);
+    basicGamer = std::make_unique<BasicGamer>(DIRECTION, gridScaler->getCoarseN(), gridScaler->getCoarseX(), gridScaler->getCoarseY(), LAYER, maxNumPins);
+    basicGamer->setWireCostMap(gridScaler->getCoarseWireCost());
+    basicGamer->setViaCostMap(gridScaler->getCoarseViaCost());
+    guidedGamer = std::make_unique<GuidedGamer>(DIRECTION, N, X, Y, LAYER, maxNumPins);
+    guidedGamer->setWireCostMap(devWireCost);
+    guidedGamer->setViaCostMap(devViaCost);
+    int coarseSweepTurns = 5;
+    int nWires = std::max(scaleX, scaleY) * (LAYER + 1) * coarseSweepTurns * 2;
+    int nRows = ((std::max(scaleX, scaleY) * N + scaleX * scaleY * LAYER) * coarseSweepTurns + PACK_ROW_SIZE - 1) / PACK_ROW_SIZE * 2;
+    int nLongWires = std::max(scaleX, scaleY) * coarseSweepTurns * 2;
+    int nWorkplace = nLongWires * (N + PACK_ROW_SIZE - 1) / PACK_ROW_SIZE * PACK_ROW_SIZE;
+    int nViasegs = scaleX * scaleY * coarseSweepTurns * 2;
+    guidedGamer->reserve(nWires, nRows, nLongWires, nWorkplace, nViasegs);
+  }
+  else
+  {
+    basicGamer = std::make_unique<BasicGamer>(DIRECTION, N, X, Y, LAYER, maxNumPins);
+    basicGamer->setWireCostMap(devWireCost);
+    basicGamer->setViaCostMap(devViaCost);
+  }
 }
 
 void GPUMazeRouter::route(const std::vector<int> &netIndices, int sweepTurns, int margin)
 {
+  std::vector<int> guide(maxNumPins * MAX_ROUTE_LEN_PER_PIN);
   // 撤销
   checkCudaErrors(cudaMemcpy(devNetIndices.get(), netIndices.data(), netIndices.size() * sizeof(int), cudaMemcpyHostToDevice));
   commitRoutes<<<(netIndices.size() + 1023) / 1024, 1024>>>(
@@ -294,14 +321,40 @@ void GPUMazeRouter::route(const std::vector<int> &netIndices, int sweepTurns, in
         devWireCost.get(), devViaCost.get(), devDemand.get(), devCapacity.get(), devHEdgeLengths.get(), devVEdgeLengths.get(),
         devLayerMinLengths.get(), devUnitLengthShortCosts.get(), unitLengthWireCost, unitViaCost, logisticSlope, viaMultiplier,
         box.lx(), box.ly(), box.width(), box.height(), DIRECTION, N, X, Y, LAYER);
-    // route
-    basicGamer->route(pinIndices, sweepTurns, box);
-    auto devRoutes = basicGamer->getRoutes();
-    checkCudaErrors(cudaMemcpy(devAllRoutes.get() + allRoutesOffset[netId], devRoutes.get(), (allRoutesOffset[netId + 1] - allRoutesOffset[netId]) * sizeof(int), cudaMemcpyDeviceToDevice));
+    if(scaleX > 1 || scaleY > 1)
+    {
+      utils::log() << "routing net(id=" << netId << ")\n";
+
+      auto coarseBox = gridScaler->calculateCoarseBoudingBox(box);
+      auto coarsePinIndices = gridScaler->calculateCoarsePinIndices(pinIndices);
+      gridScaler->scale(coarseBox);
+      basicGamer->route(coarsePinIndices, 5);
+      bool coarseIsRouted = basicGamer->getIsRouted();
+      if(!coarseIsRouted)
+        utils::log() << "gamer error: coarsely route net(id=" << netId << ") failed\n";
+
+      auto devCoarseRoutes = basicGamer->getRoutes();
+      checkCudaErrors(cudaMemcpy(guide.data(), devCoarseRoutes.get(), guide.size() * sizeof(int), cudaMemcpyDeviceToHost));
+      guidedGamer->setGuide(guide.data(), scaleX, scaleY, gridScaler->getCoarseN());
+      guidedGamer->route(pinIndices, 8);
+      bool fineIsRouted = guidedGamer->getIsRouted();
+      if(!fineIsRouted)
+        utils::log() << "gamer error: finely route net(id=" << netId << ") failed\n";
+
+      isRoutedNet[netId] = fineIsRouted;
+      auto devRoutes = guidedGamer->getRoutes();
+      checkCudaErrors(cudaMemcpy(devAllRoutes.get() + allRoutesOffset[netId], devRoutes.get(), (allRoutesOffset[netId + 1] - allRoutesOffset[netId]) * sizeof(int), cudaMemcpyDeviceToDevice));
+    }
+    else
+    {
+      // route
+      basicGamer->route(pinIndices, sweepTurns, box);
+      isRoutedNet[netId] = basicGamer->getIsRouted();
+      auto devRoutes = basicGamer->getRoutes();
+      checkCudaErrors(cudaMemcpy(devAllRoutes.get() + allRoutesOffset[netId], devRoutes.get(), (allRoutesOffset[netId + 1] - allRoutesOffset[netId]) * sizeof(int), cudaMemcpyDeviceToDevice));
+    }
     commitRoutes<<<1, 1>>>(
         devDemand.get(), devAllRoutes.get(), devAllRoutesOffset.get(), devNetIndices.get() + i, numNets, 0, DIRECTION, N, X, Y, LAYER);
-    // isRoutedNet[netId] = 1;
-    isRoutedNet[netId] = basicGamer->getIsRouted();
     if(!isRoutedNet[netId])
       utils::log() << "gamer error: route net(id=" << netId << ") failed\n";
   }
