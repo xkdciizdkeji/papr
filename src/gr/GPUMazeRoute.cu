@@ -8,7 +8,6 @@ GPUMazeRoute::GPUMazeRoute(std::vector<GRNet> &nets, GridGraph &graph, const Par
 
 GPUMazeRoute::~GPUMazeRoute()
 {
-  router.release();
 }
 
 void GPUMazeRoute::route(const std::vector<int> &netIndices, int sweepTurns, int margin)

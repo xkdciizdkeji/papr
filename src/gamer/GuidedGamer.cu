@@ -534,13 +534,13 @@ void GuidedGamer::reserve(int nWires, int nRows, int nLongWires, int nWorkplace,
 {
   if (maxNumWires < nWires)
   {
-    utils::log() << "reserve for wires\n";
+    utils::log() << "gamer info: reserve for wires\n";
     maxNumWires = std::max(nWires, maxNumWires * 2);
     devWirePackPlan = cuda_make_unique<int3[]>(maxNumWires);
   }
   if (maxNumRows < nRows)
   {
-    utils::log() << "reserve for rows\n";
+    utils::log() << "gamer info: reserve for rows\n";
     maxNumRows = std::max(nRows, maxNumRows * 2);
     devIdxAtRow = cuda_make_unique<int[]>(maxNumRows * PACK_ROW_SIZE);
     devLocAtRow = cuda_make_unique<int[]>(maxNumRows * PACK_ROW_SIZE);
@@ -550,20 +550,20 @@ void GuidedGamer::reserve(int nWires, int nRows, int nLongWires, int nWorkplace,
   }
   if (maxNumLongWires < numLongWires)
   {
-    utils::log() << "reserve for longwires\n";
+    utils::log() << "gamer info: reserve for longwires\n";
     maxNumLongWires = std::max(nLongWires, 2 * maxNumLongWires);
     devLongWireLengths = cuda_make_unique<int[]>(maxNumLongWires);
     devLongWireOffsets = cuda_make_unique<int[]>(maxNumLongWires);
   }
   if (maxNumWorkplace < nWorkplace)
   {
-    utils::log() << "reserve for workplace\n";
+    utils::log() << "gamer info: reserve for workplace\n";
     maxNumWorkplace = std::max(nWorkplace, maxNumWorkplace * 2);
     devWorkplace = cuda_make_unique<char[]>(maxNumWorkplace * (4 * sizeof(realT) + 2 * sizeof(int)));
   }
   if (maxNumViasegs < nViasegs)
   {
-    utils::log() << "reserve for viaseg\n";
+    utils::log() << "gamer info: reserve for viasegs\n";
     maxNumViasegs = std::max(nViasegs, maxNumViasegs * 2);
     devViasegPackPlan = cuda_make_unique<int3[]>(maxNumViasegs);
     devPosAtViaseg = cuda_make_unique<int[]>(maxNumViasegs * VIA_SEG_SIZE);

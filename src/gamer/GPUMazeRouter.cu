@@ -157,10 +157,10 @@ GPUMazeRouter::GPUMazeRouter(std::vector<GRNet> &nets, GridGraph &graph, const P
       { return std::max(x, y); },
       [](const GRNet &net)
       { return net.getNumPins(); });
-  // scaleX = (X + 511) / 512;
-  // scaleY = (Y + 511) / 512;
-  scaleX = 1;
-  scaleY = 1;
+  scaleX = (X + 511) / 512;
+  scaleY = (Y + 511) / 512;
+  // scaleX = 1;
+  // scaleY = 1;
 
   unitLengthWireCost = gridGraph.getUnitLengthWireCost();
   unitViaCost = gridGraph.getUnitViaCost();
@@ -323,12 +323,10 @@ void GPUMazeRouter::route(const std::vector<int> &netIndices, int sweepTurns, in
         box.lx(), box.ly(), box.width(), box.height(), DIRECTION, N, X, Y, LAYER);
     if(scaleX > 1 || scaleY > 1)
     {
-      utils::log() << "routing net(id=" << netId << ")\n";
-
       auto coarseBox = gridScaler->calculateCoarseBoudingBox(box);
       auto coarsePinIndices = gridScaler->calculateCoarsePinIndices(pinIndices);
       gridScaler->scale(coarseBox);
-      basicGamer->route(coarsePinIndices, 5);
+      basicGamer->route(coarsePinIndices, sweepTurns);
       bool coarseIsRouted = basicGamer->getIsRouted();
       if(!coarseIsRouted)
         utils::log() << "gamer error: coarsely route net(id=" << netId << ") failed\n";
@@ -336,7 +334,7 @@ void GPUMazeRouter::route(const std::vector<int> &netIndices, int sweepTurns, in
       auto devCoarseRoutes = basicGamer->getRoutes();
       checkCudaErrors(cudaMemcpy(guide.data(), devCoarseRoutes.get(), guide.size() * sizeof(int), cudaMemcpyDeviceToHost));
       guidedGamer->setGuide(guide.data(), scaleX, scaleY, gridScaler->getCoarseN());
-      guidedGamer->route(pinIndices, 8);
+      guidedGamer->route(pinIndices, sweepTurns + 3);
       bool fineIsRouted = guidedGamer->getIsRouted();
       if(!fineIsRouted)
         utils::log() << "gamer error: finely route net(id=" << netId << ") failed\n";

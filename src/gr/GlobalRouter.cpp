@@ -175,6 +175,12 @@ void GlobalRouter::route()
         log() << "gamer init. overflow net: " << netIndices.size() << "/" << nets.size() << "\n";
         for (int iter = 1; iter <= 3 && netIndices.size() > 0; iter++)
         {
+#ifndef ENABLE_ISSSORT
+        sortNetIndices(netIndices);
+#else
+        log() << "sort net indices with OFDALD" << std::endl;
+        sortNetIndicesOFDALD(netIndices, netOverflows);
+#endif
             gamer.route(netIndices, 3 + iter, 10 * iter);
             for (auto netId : netIndices)
                 isGamerRoutedNet[netId] = true;
