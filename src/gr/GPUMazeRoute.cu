@@ -74,13 +74,13 @@ __host__ __device__ realT logistic(realT x, realT slope)
   return 1.f / (1.f + exp(x * slope));
 }
 
-template<class T, class U>
+template <class T, class U>
 __device__ T myAtomicAdd(T *address, U val)
 {
   return atomicAdd(address, val);
 }
 
-template<class U>
+template <class U>
 __device__ double myAtomicAdd(double *address, U val)
 {
   unsigned long long old = *(unsigned long long *)address;
@@ -89,10 +89,9 @@ __device__ double myAtomicAdd(double *address, U val)
   {
     assumed = old;
     old = atomicCAS(
-      (unsigned long long *)address,
-      assumed,
-      __double_as_longlong(val + __longlong_as_double(assumed))
-    );
+        (unsigned long long *)address,
+        assumed,
+        __double_as_longlong(val + __longlong_as_double(assumed)));
   } while (assumed != old);
   return __longlong_as_double(old);
 }
@@ -106,16 +105,16 @@ __global__ void calculateWireCostSum(realT *wireCostSum, const realT *wireCost, 
   extern __shared__ realT sum[];
   for (int i = 1; i < LAYER; i++)
   {
-    if(blockIdx.x > ((i & 1) ^ DIRECTION ? lenY : lenX))
+    if (blockIdx.x > ((i & 1) ^ DIRECTION ? lenY : lenX))
       continue;
     int offset = i * N * N + blockIdx.x * N + ((i & 1) ^ DIRECTION ? offsetY * N + offsetX : offsetX * N + offsetY);
     int len = (i & 1) ^ DIRECTION ? lenX : lenY;
-    for(int cur = threadIdx.x; cur < len; cur += blockDim.x)
+    for (int cur = threadIdx.x; cur < len; cur += blockDim.x)
       sum[cur] = wireCost[offset + cur];
     __syncthreads();
     for (int d = 0; (1 << d) < len; d++)
     {
-      for(int cur = threadIdx.x; cur < (len + 1) / 2; cur += blockDim.x)
+      for (int cur = threadIdx.x; cur < (len + 1) / 2; cur += blockDim.x)
       {
         // int src = (1 << d) + (threadIdx.x >> d << (d + 1)) - 1;
         // int dst = (1 << d) + threadIdx.x + (threadIdx.x >> d << d);
@@ -126,7 +125,7 @@ __global__ void calculateWireCostSum(realT *wireCostSum, const realT *wireCost, 
       }
       __syncthreads();
     }
-    for(int cur = threadIdx.x; cur < len; cur += blockDim.x)
+    for (int cur = threadIdx.x; cur < len; cur += blockDim.x)
       wireCostSum[offset + cur] = sum[cur];
     __syncthreads();
   }
@@ -169,11 +168,11 @@ __global__ void sweepWire(realT *dist, int *prev, const realT *costSum, int offs
 
   for (int i = 1; i < LAYER; i++)
   {
-    if(blockIdx.x > ((i & 1) ^ DIRECTION ? lenY : lenX))
+    if (blockIdx.x > ((i & 1) ^ DIRECTION ? lenY : lenX))
       continue;
     int offset = i * N * N + blockIdx.x * N + ((i & 1) ^ DIRECTION ? offsetY * N + offsetX : offsetX * N + offsetY);
     int len = (i & 1) ^ DIRECTION ? lenX : lenY;
-    for(int cur = threadIdx.x; cur < len; cur += blockDim.x)
+    for (int cur = threadIdx.x; cur < len; cur += blockDim.x)
     {
       minL[cur] = dist[offset + cur] - costSum[offset + cur];
       minR[len - 1 - cur] = dist[offset + cur] + costSum[offset + cur];
@@ -184,7 +183,7 @@ __global__ void sweepWire(realT *dist, int *prev, const realT *costSum, int offs
     for (int d = 0; (1 << d) < len; d++)
     {
       // 对于长度为N的数组，需要(N+1)/2个线程工作
-      for(int cur = threadIdx.x; cur < (len + 1) / 2; cur += blockDim.x)
+      for (int cur = threadIdx.x; cur < (len + 1) / 2; cur += blockDim.x)
       {
         // int src = (1 << d) + (threadIdx.x >> d << (d + 1)) - 1;
         // int dst = (1 << d) + threadIdx.x + (threadIdx.x >> d << d);
@@ -206,7 +205,7 @@ __global__ void sweepWire(realT *dist, int *prev, const realT *costSum, int offs
       }
       __syncthreads();
     }
-    for(int cur = threadIdx.x; cur < len; cur += blockDim.x)
+    for (int cur = threadIdx.x; cur < len; cur += blockDim.x)
     {
       if (cur < len)
       {
@@ -415,7 +414,7 @@ __global__ void calculateWireViaCost(realT *wireCost, realT *viaCost, const real
   int x = blockIdx.x * blockDim.x + threadIdx.x;
   int y = blockIdx.y * blockDim.y + threadIdx.y;
   int z = blockIdx.z * blockDim.z + threadIdx.z;
-  if(x >= lenX || y >= lenY || z >= LAYER)
+  if (x >= lenX || y >= lenY || z >= LAYER)
     return;
   x += offsetX;
   y += offsetY;
@@ -468,7 +467,8 @@ GPUMazeRoute::GPUMazeRoute(std::vector<GRNet> &nets, GridGraph &graph, const Par
   N = std::max(X, Y);
   NUMNET = nets.size();
   ALLPIN_STRIDE = 1 + std::max_element(nets.begin(), nets.end(), [](const GRNet &net1, const GRNet &net2)
-                                       { return net1.getNumPins() < net2.getNumPins(); })->getNumPins();
+                                       { return net1.getNumPins() < net2.getNumPins(); })
+                          ->getNumPins();
 
   unitLengthWireCost = gridGraph.getUnitLengthWireCost();
   unitViaCost = gridGraph.getUnitViaCost();
@@ -556,15 +556,14 @@ GPUMazeRoute::GPUMazeRoute(std::vector<GRNet> &nets, GridGraph &graph, const Par
       cpuIsRoutedNet[i] = 1;
       routes[0] = 0;
       GRTreeNode::preorder(tree, [&](std::shared_ptr<GRTreeNode> node)
-      {
+                           {
         int nodeIdx = xyzToIdx(node->x, node->y, node->layerIdx, DIRECTION, N);
         for(auto child : node->children)
         {
           int childIdx = xyzToIdx(child->x, child->y, child->layerIdx, DIRECTION, N);
           routes[++routes[0]] = std::min(nodeIdx, childIdx);
           routes[++routes[0]] = std::max(nodeIdx, childIdx);
-        }
-      });
+        } });
       if (routes[0] > net.getNumPins() * MAX_ROUTE_LEN_PER_PIN)
       {
         ::utils::log() << "ERROR: Not enough routes size for net(id=" << net.getIndex() << "), "
@@ -681,16 +680,13 @@ void GPUMazeRoute::route(const std::vector<int> &netIndices, int sweepTurns, int
     calculateWireViaCost<<<dim3((lenX + 31) / 32, (lenY + 31) / 32, LAYER), dim3(32, 32, 1)>>>(
         devWireCost, devViaCost, devDemand, devCapacity, devHEdgeLengths, devVEdgeLengths,
         devLayerMinLengths, devUnitLengthShortCosts, unitLengthWireCost, unitViaCost, logisticSlope, viaMultiplier,
-        offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER
-    );
+        offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER);
     calculateWireCostSum<<<maxlen, (maxlen + 1) / 2, maxlen * sizeof(realT)>>>(
-      devWireCostSum, devWireCost, offsetX, offsetY, lenX, lenY,  DIRECTION, N, X, Y, LAYER
-    );
+        devWireCostSum, devWireCost, offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER);
 
     // maze routing
     cleanDistPrev<<<dim3((lenX + 31) / 32, (lenY + 31) / 32, LAYER), dim3(32, 32, 1)>>>(
-      devDist, devPrev, 1, offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER
-    );
+        devDist, devPrev, 1, offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER);
     setRootPin<<<1, 1>>>(devDist, devPrev, devIsRoutedPin, devAllpins);
     cpuRootIndices[netId] = cpuAllpins[1];
     for (int iter = 1; iter < points.size(); iter++)
@@ -698,16 +694,13 @@ void GPUMazeRoute::route(const std::vector<int> &netIndices, int sweepTurns, int
       for (int turn = 0; turn < sweepTurns; turn++)
       {
         sweepVia<<<dim3((lenX + 31) / 32, (lenY + 31) / 32, 1), dim3(32, 32, 1)>>>(
-          devDist, devPrev, devViaCost, offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER
-        );
+            devDist, devPrev, devViaCost, offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER);
         sweepWire<<<maxlen, std::min(1024, (maxlen + 1) / 2), maxlen * (2 * sizeof(realT) + 2 * sizeof(int))>>>(
-          devDist, devPrev, devWireCostSum, offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER
-        );
+            devDist, devPrev, devWireCostSum, offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER);
       }
       tracePath<<<1, 1>>>(devDist, devPrev, devIsRoutedPin, devNetRoutes, devAllpins, DIRECTION, N, X, Y, LAYER);
       cleanDistPrev<<<dim3((lenX + 31) / 32, (lenY + 31) / 32, LAYER), dim3(32, 32, 1)>>>(
-        devDist, devPrev, 0, offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER
-      );
+          devDist, devPrev, 0, offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER);
     }
 
     // commit route
@@ -746,7 +739,7 @@ void GPUMazeRoute::commit(const std::vector<int> &netIndices)
   // TODO: bactching and multi-threading
   for (int netId : netIndices)
   {
-    if(cpuIsRoutedNet[netId])
+    if (cpuIsRoutedNet[netId])
     {
       // ripup old tree
       auto oldTree = nets[netId].getRoutingTree();
@@ -852,11 +845,11 @@ std::pair<std::vector<int>, std::vector<int>> GPUMazeRoute::batching(const std::
   auto noConflict = [&](int netId)
   {
     auto b1 = nets[netId].getBoundingBox();
-    b1.Set(std::max(0, b1.lx() - margin), std::max(0, b1.ly() - margin), 
+    b1.Set(std::max(0, b1.lx() - margin), std::max(0, b1.ly() - margin),
            std::min(X, b1.hx() + margin), std::min(Y, b1.hy() + margin));
-    for(const auto &b2 : batchBoxes)
+    for (const auto &b2 : batchBoxes)
     {
-      if(b1.HasIntersectWith(b2.second))
+      if (b1.HasIntersectWith(b2.second))
         return false;
     }
     return true;
@@ -975,6 +968,13 @@ std::shared_ptr<GRTreeNode> GPUMazeRoute::extractGRTree(const int *routes, int r
     {
       auto startIt = std::lower_bound(allpoints.begin(), allpoints.end(), start, compv);
       auto endIt = std::upper_bound(allpoints.begin(), allpoints.end(), end, compv);
+      if (static_cast<int>(endIt - startIt) < 2)
+      {
+        std::ofstream errLog("extract_error.log");
+        errLog << DIRECTION << " " << N << " " << rootIdx << "\n";
+        for (int i = 0; i < routes[0]; i += 2)
+          errLog << routes[1 + i] << " " << routes[2 + i] << "\n";
+      }
       for (auto it = startIt, nextIt = startIt + 1; nextIt != endIt; it++, nextIt++)
         segments.emplace_back(*it, *nextIt);
     }
