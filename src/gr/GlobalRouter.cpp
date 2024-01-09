@@ -192,7 +192,7 @@ void GlobalRouter::route()
             if (isGamerRoutedNet[netId])
                 netIndices.push_back(netId);
         log() << "commiting gamer's result ...\n";
-        gamer.commit(netIndices);
+        gamer.apply(netIndices);
         log() << "commiting done\n";
     }
 #endif
