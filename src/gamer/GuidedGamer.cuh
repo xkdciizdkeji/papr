@@ -47,6 +47,7 @@ private:
   cuda_unique_ptr<realT[]> devCostAtRow;
   cuda_unique_ptr<realT[]> devDistAtRow;
   cuda_unique_ptr<int[]> devPrevAtRow;
+  cuda_unique_ptr<int[]> devMarkAtRow;
 
   // via segment
   cuda_unique_ptr<int[]> devPosAtViaseg;
@@ -55,7 +56,7 @@ private:
   // long wire row & their workplace
   cuda_unique_ptr<int[]> devLongWireOffsets;
   cuda_unique_ptr<int[]> devLongWireLengths;
-  cuda_unique_ptr<char[]> devWorkplace; // we should allocate `N/ROW_SIZE*ROW_SIZE` of memory for each long row
+  cuda_unique_ptr<char[]> devWorkplace;
 
   // original cost
   cuda_shared_ptr<const realT[]> devWireCost;

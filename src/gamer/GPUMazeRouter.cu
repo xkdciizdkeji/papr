@@ -8,10 +8,10 @@
 // ----------------------------
 
 __global__ static void commitRoutes(realT *demand, const int *allRoutes, const int *allRoutesOffset, const int *netIndices,
-                                    int numNets, int reverse, int DIRECTION, int N, int X, int Y, int LAYER)
+                                    int reverse, int numNets, int DIRECTION, int N, int X, int Y, int LAYER)
 {
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (tid > numNets)
+  if (tid >= numNets)
     return;
   const int *routes = allRoutes + allRoutesOffset[netIndices[tid]];
   for (int i = 0; i < routes[0]; i += 2)
@@ -151,16 +151,11 @@ GPUMazeRouter::GPUMazeRouter(std::vector<GRNet> &nets, GridGraph &graph, const P
   X = gridGraph.getSize(0);
   Y = gridGraph.getSize(1);
   N = std::max(X, Y);
-  numNets = nets.size();
   maxNumPins = std::transform_reduce(
       nets.begin(), nets.end(), 0, [](int x, int y)
       { return std::max(x, y); },
       [](const GRNet &net)
       { return net.getNumPins(); });
-  scaleX = (X + 511) / 512;
-  scaleY = (Y + 511) / 512;
-  // scaleX = 1;
-  // scaleY = 1;
 
   unitLengthWireCost = gridGraph.getUnitLengthWireCost();
   unitViaCost = gridGraph.getUnitViaCost();
@@ -229,22 +224,22 @@ GPUMazeRouter::GPUMazeRouter(std::vector<GRNet> &nets, GridGraph &graph, const P
   checkCudaErrors(cudaMemcpy(devDemand.get(), demand.data(), LAYER * N * N * sizeof(realT), cudaMemcpyHostToDevice));
 
   // 初始化rootIndices, isRouteNet, isOverflowNet内存显存
-  rootIndices.resize(numNets);
+  rootIndices.resize(nets.size());
   std::transform(nets.begin(), nets.end(), rootIndices.begin(), [&](const GRNet &net)
                  { return net.getRoutingTree() == nullptr ? 0 : xyzToIdx(net.getRoutingTree()->x, net.getRoutingTree()->y, net.getRoutingTree()->layerIdx, DIRECTION, N); });
-  isRoutedNet.resize(numNets, 0);
+  isRoutedNet.resize(nets.size(), 0);
   std::transform(nets.begin(), nets.end(), isRoutedNet.begin(), [](const GRNet &net)
                  { return net.getRoutingTree() != nullptr; });
-  isOverflowNet.resize(numNets, 0);
-  devIsOverflowNet = cuda_make_unique<int[]>(numNets);
-  devNetIndices = cuda_make_unique<int[]>(numNets);
+  isOverflowNet.resize(nets.size(), 0);
+  devIsOverflowNet = cuda_make_unique<int[]>(nets.size());
+  devNetIndices = cuda_make_unique<int[]>(nets.size());
 
   // 初始化allRoutes, allRoutesOffset显存内存
-  allRoutesOffset.resize(numNets + 1, 0);
-  for (int i = 0; i < numNets; i++)
+  allRoutesOffset.resize(nets.size() + 1, 0);
+  for (int i = 0; i < nets.size(); i++)
     allRoutesOffset[i + 1] = allRoutesOffset[i] + nets[i].getNumPins() * MAX_ROUTE_LEN_PER_PIN;
   allRoutes.resize(allRoutesOffset.back(), 0);
-  for (int i = 0; i < numNets; i++)
+  for (int i = 0; i < nets.size(); i++)
   {
     int *routes = allRoutes.data() + allRoutesOffset[i];
     auto tree = nets[i].getRoutingTree();
@@ -268,110 +263,126 @@ GPUMazeRouter::GPUMazeRouter(std::vector<GRNet> &nets, GridGraph &graph, const P
   checkCudaErrors(cudaMemcpy(devAllRoutes.get(), allRoutes.data(), allRoutes.size() * sizeof(int), cudaMemcpyHostToDevice));
 
   // 标记overflow net
-  markOverflowNet<<<(numNets + 1023) / 1024, 1024>>>(
-      devIsOverflowNet.get(), devDemand.get(), devCapacity.get(), devAllRoutes.get(), devAllRoutesOffset.get(), numNets, DIRECTION, N);
-  checkCudaErrors(cudaMemcpy(isOverflowNet.data(), devIsOverflowNet.get(), numNets * sizeof(int), cudaMemcpyDeviceToHost));
+  markOverflowNet<<<(nets.size() + 1023) / 1024, 1024>>>(
+      devIsOverflowNet.get(), devDemand.get(), devCapacity.get(), devAllRoutes.get(), devAllRoutesOffset.get(), nets.size(), DIRECTION, N);
+  checkCudaErrors(cudaMemcpy(isOverflowNet.data(), devIsOverflowNet.get(), nets.size() * sizeof(int), cudaMemcpyDeviceToHost));
 
-  // rotuer
-  if(scaleX > 1 || scaleY > 1)
-  {
-    gridScaler = std::make_unique<GridScaler>(DIRECTION, N, X, Y, LAYER, scaleX, scaleY);
-    gridScaler->setWireCostMap(devWireCost);
-    gridScaler->setViaCostMap(devViaCost);
-    basicGamer = std::make_unique<BasicGamer>(DIRECTION, gridScaler->getCoarseN(), gridScaler->getCoarseX(), gridScaler->getCoarseY(), LAYER, maxNumPins);
-    basicGamer->setWireCostMap(gridScaler->getCoarseWireCost());
-    basicGamer->setViaCostMap(gridScaler->getCoarseViaCost());
-    guidedGamer = std::make_unique<GuidedGamer>(DIRECTION, N, X, Y, LAYER, maxNumPins);
-    guidedGamer->setWireCostMap(devWireCost);
-    guidedGamer->setViaCostMap(devViaCost);
-    int coarseSweepTurns = 5;
-    int nWires = std::max(scaleX, scaleY) * (LAYER + 1) * coarseSweepTurns * 2;
-    int nRows = ((std::max(scaleX, scaleY) * N + scaleX * scaleY * LAYER) * coarseSweepTurns + PACK_ROW_SIZE - 1) / PACK_ROW_SIZE * 2;
-    int nLongWires = std::max(scaleX, scaleY) * coarseSweepTurns * 2;
-    int nWorkplace = nLongWires * (N + PACK_ROW_SIZE - 1) / PACK_ROW_SIZE * PACK_ROW_SIZE;
-    int nViasegs = scaleX * scaleY * coarseSweepTurns * 2;
-    guidedGamer->reserve(nWires, nRows, nLongWires, nWorkplace, nViasegs);
-  }
-  else
-  {
-    basicGamer = std::make_unique<BasicGamer>(DIRECTION, N, X, Y, LAYER, maxNumPins);
-    basicGamer->setWireCostMap(devWireCost);
-    basicGamer->setViaCostMap(devViaCost);
-  }
+  // init gamer
+  gamer = std::make_unique<BasicGamer>(DIRECTION, N, X, Y, LAYER, maxNumPins);
+  gamer->setWireCostMap(devWireCost);
+  gamer->setViaCostMap(devViaCost);
+  // // init scaler
+  // int scaleX = (X + 255) / 256;
+  // int scaleY = (Y + 255) / 256;
+  // scaler = std::make_unique<GridScaler>(DIRECTION, N, X, Y, LAYER, scaleX, scaleY);
+  // scaler->setWireCostMap(devWireCost);
+  // scaler->setViaCostMap(devViaCost);
+  // // init coarse gamer
+  // coarseGamer = std::make_unique<BasicGamer>(DIRECTION, scaler->getCoarseN(), scaler->getCoarseX(), scaler->getCoarseY(), LAYER, maxNumPins);
+  // coarseGamer->setWireCostMap(scaler->getCoarseWireCost());
+  // coarseGamer->setViaCostMap(scaler->getCoarseViaCost());
+  // // init fine gamer
+  // fineGamer = std::make_unique<GuidedGamer>(DIRECTION, N, X, Y, LAYER, maxNumPins);
+  // fineGamer->setWireCostMap(devWireCost);
+  // fineGamer->setViaCostMap(devViaCost);
+  // // reserve memory for fine gamer
+  // int nWires = std::max(scaleX, scaleY) * (LAYER + 1) * 20;
+  // int nRows = ((std::max(scaleX, scaleY) * N + scaleX * scaleY * LAYER) * 10 + PACK_ROW_SIZE - 1) / PACK_ROW_SIZE * 2;
+  // int nLongWires = std::max(scaleX, scaleY) * 20;
+  // int nWorkplace = nLongWires * (N + PACK_ROW_SIZE - 1) / PACK_ROW_SIZE * PACK_ROW_SIZE;
+  // int nViasegs = scaleX * scaleY * 20;
+  // fineGamer->reserve(nWires, nRows, nLongWires, nWorkplace, nViasegs);
+  // // for fine gamer
+  // coarseRoutes.reserve(maxNumPins * MAX_ROUTE_LEN_PER_PIN);
+  // coarsePinIndices.reserve(maxNumPins);
 }
 
 void GPUMazeRouter::route(const std::vector<int> &netIndices, int sweepTurns, int margin)
 {
-  std::vector<int> guide(maxNumPins * MAX_ROUTE_LEN_PER_PIN);
-  // 撤销
+  // rip-up
   checkCudaErrors(cudaMemcpy(devNetIndices.get(), netIndices.data(), netIndices.size() * sizeof(int), cudaMemcpyHostToDevice));
   commitRoutes<<<(netIndices.size() + 1023) / 1024, 1024>>>(
-      devDemand.get(), devAllRoutes.get(), devAllRoutesOffset.get(), devNetIndices.get(), numNets, 1, DIRECTION, N, X, Y, LAYER);
+      devDemand.get(), devAllRoutes.get(), devAllRoutesOffset.get(), devNetIndices.get(), 1, netIndices.size(), DIRECTION, N, X, Y, LAYER);
+  // route
+  std::vector<int> pinIndices(maxNumPins);
   for (int i = 0; i < netIndices.size(); i++)
   {
     int netId = netIndices[i];
-    std::vector<int> pinIndices = selectAccessPoints(nets[netId]);
-    rootIndices[netId] = pinIndices.front();
-    // 扫描范围
-    utils::BoxT<int> box = nets[netId].getBoundingBox();
+    selectAccessPoints(nets[netId], pinIndices);
+    utils::BoxT<int> box = getPinIndicesBoundingBox(pinIndices, DIRECTION, N);
     box.Set(std::max(0, box.lx() - margin), std::max(0, box.ly() - margin),
             std::min(X, box.hx() + margin), std::min(Y, box.hy() + margin));
-    // 计算wireCost, viaCost
-    calculateWireViaCost<<<dim3((box.width() + 31) / 32, (box.height() + 31) / 32, LAYER), dim3(32, 32, 1)>>>(
-        devWireCost.get(), devViaCost.get(), devDemand.get(), devCapacity.get(), devHEdgeLengths.get(), devVEdgeLengths.get(),
-        devLayerMinLengths.get(), devUnitLengthShortCosts.get(), unitLengthWireCost, unitViaCost, logisticSlope, viaMultiplier,
-        box.lx(), box.ly(), box.width(), box.height(), DIRECTION, N, X, Y, LAYER);
-    if(scaleX > 1 || scaleY > 1)
-    {
-      auto coarseBox = gridScaler->calculateCoarseBoudingBox(box);
-      auto coarsePinIndices = gridScaler->calculateCoarsePinIndices(pinIndices);
-      gridScaler->scale(coarseBox);
-      basicGamer->route(coarsePinIndices, sweepTurns);
-      bool coarseIsRouted = basicGamer->getIsRouted();
-      if(!coarseIsRouted)
-        utils::log() << "gamer error: coarsely route net(id=" << netId << ") failed\n";
-
-      auto devCoarseRoutes = basicGamer->getRoutes();
-      checkCudaErrors(cudaMemcpy(guide.data(), devCoarseRoutes.get(), guide.size() * sizeof(int), cudaMemcpyDeviceToHost));
-      guidedGamer->setGuide(guide.data(), scaleX, scaleY, gridScaler->getCoarseN());
-      guidedGamer->route(pinIndices, sweepTurns + 3);
-      bool fineIsRouted = guidedGamer->getIsRouted();
-      if(!fineIsRouted)
-        utils::log() << "gamer error: finely route net(id=" << netId << ") failed\n";
-
-      isRoutedNet[netId] = fineIsRouted;
-      auto devRoutes = guidedGamer->getRoutes();
-      checkCudaErrors(cudaMemcpy(devAllRoutes.get() + allRoutesOffset[netId], devRoutes.get(), (allRoutesOffset[netId + 1] - allRoutesOffset[netId]) * sizeof(int), cudaMemcpyDeviceToDevice));
-    }
-    else
-    {
-      // route
-      basicGamer->route(pinIndices, sweepTurns, box);
-      isRoutedNet[netId] = basicGamer->getIsRouted();
-      auto devRoutes = basicGamer->getRoutes();
-      checkCudaErrors(cudaMemcpy(devAllRoutes.get() + allRoutesOffset[netId], devRoutes.get(), (allRoutesOffset[netId + 1] - allRoutesOffset[netId]) * sizeof(int), cudaMemcpyDeviceToDevice));
-    }
-    commitRoutes<<<1, 1>>>(
-        devDemand.get(), devAllRoutes.get(), devAllRoutesOffset.get(), devNetIndices.get() + i, numNets, 0, DIRECTION, N, X, Y, LAYER);
-    if(!isRoutedNet[netId])
-      utils::log() << "gamer error: route net(id=" << netId << ") failed\n";
+    routeOneNet(netId, pinIndices, sweepTurns, box);
+    commitRoutes<<<1, 1>>>(devDemand.get(), devAllRoutes.get(), devAllRoutesOffset.get(), devNetIndices.get() + i, 0, 1, DIRECTION, N, X, Y, LAYER);
   }
-  markOverflowNet<<<(numNets + 1023) / 1024, 1024>>>(
-      devIsOverflowNet.get(), devDemand.get(), devCapacity.get(), devAllRoutes.get(), devAllRoutesOffset.get(), numNets, DIRECTION, N);
-  checkCudaErrors(cudaMemcpy(isOverflowNet.data(), devIsOverflowNet.get(), numNets * sizeof(int), cudaMemcpyDeviceToHost));
+  // mark overflow net
+  markOverflowNet<<<(nets.size() + 1023) / 1024, 1024>>>(
+      devIsOverflowNet.get(), devDemand.get(), devCapacity.get(), devAllRoutes.get(), devAllRoutesOffset.get(), nets.size(), DIRECTION, N);
+  checkCudaErrors(cudaMemcpy(isOverflowNet.data(), devIsOverflowNet.get(), nets.size() * sizeof(int), cudaMemcpyDeviceToHost));
 }
+
+// void GPUMazeRouter::routeTwoStep(const std::vector<int> &netIndices, int coarseSweepTurns, int fineSweepTurns, int coarseMargin)
+// {
+//   // rip-up
+//   checkCudaErrors(cudaMemcpy(devNetIndices.get(), netIndices.data(), netIndices.size() * sizeof(int), cudaMemcpyHostToDevice));
+//   commitRoutes<<<(netIndices.size() + 1023) / 1024, 1024>>>(
+//       devDemand.get(), devAllRoutes.get(), devAllRoutesOffset.get(), devNetIndices.get(), 1, netIndices.size(), DIRECTION, N, X, Y, LAYER);
+
+//   // route
+//   std::vector<int> pinIndices(maxNumPins);
+//   {
+//     int netId = 24211;
+//     selectAccessPoints(nets[netId], pinIndices);
+//     rootIndices[netId] = pinIndices.front();
+
+//     // bounding box
+//     utils::BoxT<int> box = getPinIndicesBoundingBox(pinIndices, DIRECTION, N);
+//     utils::BoxT<int> coarseBox = scaler->calculateCoarseBoudingBox(box);
+//     coarseBox.Set(std::max(0, coarseBox.lx() - coarseMargin), std::max(0, coarseBox.ly() - coarseMargin),
+//                   std::min(scaler->getCoarseX(), coarseBox.hx() + coarseMargin), std::min(scaler->getCoarseY(), coarseBox.hy() + coarseMargin));
+//     routeOneNetTwoStep(netId, pinIndices, coarseSweepTurns, fineSweepTurns, coarseBox);
+//     exit(0);
+//   }
+//   for (int i = 0; i < netIndices.size(); i++)
+//   {
+//     int netId = netIndices[i];
+//     selectAccessPoints(nets[netId], pinIndices);
+//     rootIndices[netId] = pinIndices.front();
+
+//     // bounding box
+//     utils::BoxT<int> box = getPinIndicesBoundingBox(pinIndices, DIRECTION, N);
+//     if (box.width() < 256 && box.height() < 256 && box.width() < scaler->getScaleX() && box.height() < scaler->getScaleY())
+//     {
+//       box.Set(std::max(0, box.lx() - coarseMargin * scaler->getScaleX()), std::max(0, box.ly() - coarseMargin * scaler->getScaleY()),
+//               std::min(X, box.hx() + coarseMargin * scaler->getScaleX()), std::min(Y, box.hy() + coarseMargin * scaler->getScaleY()));
+//       routeOneNet(netId, pinIndices, fineSweepTurns, box);
+//     }
+//     else
+//     {
+//       utils::BoxT<int> coarseBox = scaler->calculateCoarseBoudingBox(box);
+//       coarseBox.Set(std::max(0, coarseBox.lx() - coarseMargin), std::max(0, coarseBox.ly() - coarseMargin),
+//                     std::min(scaler->getCoarseX(), coarseBox.hx() + coarseMargin), std::min(scaler->getCoarseY(), coarseBox.hy() + coarseMargin));
+//       routeOneNetTwoStep(netId, pinIndices, coarseSweepTurns, fineSweepTurns, coarseBox);
+//     }
+//     commitRoutes<<<1, 1>>>(devDemand.get(), devAllRoutes.get(), devAllRoutesOffset.get(), devNetIndices.get() + i, 0, 1, DIRECTION, N, X, Y, LAYER);
+//   }
+//   // mark overflow net
+//   markOverflowNet<<<(nets.size() + 1023) / 1024, 1024>>>(
+//       devIsOverflowNet.get(), devDemand.get(), devCapacity.get(), devAllRoutes.get(), devAllRoutesOffset.get(), nets.size(), DIRECTION, N);
+//   checkCudaErrors(cudaMemcpy(isOverflowNet.data(), devIsOverflowNet.get(), nets.size() * sizeof(int), cudaMemcpyDeviceToHost));
+// }
 
 void GPUMazeRouter::getOverflowNetIndices(std::vector<int> &netIndices) const
 {
   netIndices.clear();
-  for (int netId = 0; netId < numNets; netId++)
+  for (int netId = 0; netId < nets.size(); netId++)
   {
     if (isOverflowNet[netId])
       netIndices.push_back(netId);
   }
 }
 
-void GPUMazeRouter::commit(const std::vector<int> &netIndices)
+void GPUMazeRouter::apply(const std::vector<int> &netIndices)
 {
   checkCudaErrors(cudaMemcpy(allRoutes.data(), devAllRoutes.get(), allRoutes.size() * sizeof(int), cudaMemcpyDeviceToHost));
   // TODO: bactching and multi-threading
@@ -390,7 +401,8 @@ void GPUMazeRouter::commit(const std::vector<int> &netIndices)
 
       // // check if each pin of the net is routed
       // std::unordered_set<int> routePoints;
-      // GRTreeNode::preorder(newTree, [&](std::shared_ptr<GRTreeNode> node){
+      // GRTreeNode::preorder(newTree, [&](std::shared_ptr<GRTreeNode> node)
+      //                      {
       //   for(const auto &child : node->children)
       //   {
       //     if(child->layerIdx == node->layerIdx)
@@ -411,39 +423,38 @@ void GPUMazeRouter::commit(const std::vector<int> &netIndices)
       //       for(int z = startZ; z <= endZ; z++)
       //         routePoints.insert(xyzToIdx(x, y, z, DIRECTION, N));
       //     }
-      //   }
-      // });
-      // for(const auto &accessPoints : nets[netId].getPinAccessPoints())
+      //   } });
+      // for (const auto &accessPoints : nets[netId].getPinAccessPoints())
       // {
       //   bool isRoutePin = false;
-      //   for(const auto &point : accessPoints)
+      //   for (const auto &point : accessPoints)
       //   {
       //     auto idx = xyzToIdx(point.x, point.y, point.layerIdx, DIRECTION, N);
-      //     if(routePoints.find(idx) != routePoints.end())
+      //     if (routePoints.find(idx) != routePoints.end())
       //     {
       //       isRoutePin = true;
       //       break;
       //     }
       //   }
-      //   if(!isRoutePin)
+      //   if (!isRoutePin)
       //   {
       //     log() << "Gamer error: net(id=" << netId << ") is not routed\n";
-      //     std::ofstream errorLog(std::to_string(netId) + ".txt");
-      //     errorLog << DIRECTION << " " << N << " " << X << " " << Y << " " << LAYER << "\n";
-      //     errorLog << "\n";
+      //     // std::ofstream errorLog(std::to_string(netId) + ".txt");
+      //     // errorLog << DIRECTION << " " << N << " " << X << " " << Y << " " << LAYER << "\n";
+      //     // errorLog << "\n";
 
-      //     const int *routes = allRoutes.data() + allRoutesOffset[netId];
-      //     for(int i = 0; i < routes[0]; i += 2)
-      //       errorLog << routes[1 + i] << " " << routes[2 + i] << "\n";
-      //     errorLog << "\n";
+      //     // const int *routes = allRoutes.data() + allRoutesOffset[netId];
+      //     // for(int i = 0; i < routes[0]; i += 2)
+      //     //   errorLog << routes[1 + i] << " " << routes[2 + i] << "\n";
+      //     // errorLog << "\n";
 
-      //     for(const auto &accessPoints : nets[netId].getPinAccessPoints())
-      //     {
-      //       for(const auto &p : accessPoints)
-      //         errorLog << xyzToIdx(p.x, p.y, p.layerIdx, DIRECTION, N) << " ";
-      //       errorLog << "\n";
-      //     }
-      //     errorLog << "\n";
+      //     // for(const auto &accessPoints : nets[netId].getPinAccessPoints())
+      //     // {
+      //     //   for(const auto &p : accessPoints)
+      //     //     errorLog << xyzToIdx(p.x, p.y, p.layerIdx, DIRECTION, N) << " ";
+      //     //   errorLog << "\n";
+      //     // }
+      //     // errorLog << "\n";
       //     break;
       //   }
       // }
@@ -455,9 +466,69 @@ void GPUMazeRouter::commit(const std::vector<int> &netIndices)
   }
 }
 
-std::vector<int> GPUMazeRouter::selectAccessPoints(const GRNet &net) const
+void GPUMazeRouter::routeOneNet(int netId, const std::vector<int> &pinIndices, int sweepTurns, const utils::BoxT<int> &box)
 {
-  std::set<int> selectedAccessPoints;
+  rootIndices[netId] = pinIndices.front();
+  // 计算wireCost, viaCost
+  calculateWireViaCost<<<dim3((box.width() + 31) / 32, (box.height() + 31) / 32, LAYER), dim3(32, 32, 1)>>>(
+      devWireCost.get(), devViaCost.get(), devDemand.get(), devCapacity.get(), devHEdgeLengths.get(), devVEdgeLengths.get(),
+      devLayerMinLengths.get(), devUnitLengthShortCosts.get(), unitLengthWireCost, unitViaCost, logisticSlope, viaMultiplier,
+      box.lx(), box.ly(), box.width(), box.height(), DIRECTION, N, X, Y, LAYER);
+  // route
+  gamer->route(pinIndices, sweepTurns, box);
+  isRoutedNet[netId] = gamer->getIsRouted();
+  if (!isRoutedNet[netId])
+  {
+    utils::log() << "gamer error: route net(id=" << netId << ") failed\n";
+    return;
+  }
+  auto devRoutes = gamer->getRoutes();
+  checkCudaErrors(cudaMemcpy(devAllRoutes.get() + allRoutesOffset[netId], devRoutes.get(), (allRoutesOffset[netId + 1] - allRoutesOffset[netId]) * sizeof(int), cudaMemcpyDeviceToDevice));
+}
+
+// void GPUMazeRouter::routeOneNetTwoStep(int netId, const std::vector<int> &pinIndices, int coarseSweepTurns, int fineSweepTurns, const utils::BoxT<int> &coarseBox)
+// {
+//   rootIndices[netId] = pinIndices.front();
+//   // bounding box
+//   utils::BoxT<int> box(coarseBox.lx() * scaler->getScaleX(), coarseBox.ly() * scaler->getScaleY(),
+//                        std::min(X, coarseBox.hx() * scaler->getScaleX()), std::min(Y, coarseBox.hy() * scaler->getScaleY()));
+//   // compute wireCost & viaCost
+//   calculateWireViaCost<<<dim3((box.width() + 31) / 32, (box.height() + 31) / 32, LAYER), dim3(32, 32, 1)>>>(
+//       devWireCost.get(), devViaCost.get(), devDemand.get(), devCapacity.get(), devHEdgeLengths.get(), devVEdgeLengths.get(),
+//       devLayerMinLengths.get(), devUnitLengthShortCosts.get(), unitLengthWireCost, unitViaCost, logisticSlope, viaMultiplier,
+//       box.lx(), box.ly(), box.width(), box.height(), DIRECTION, N, X, Y, LAYER);
+//   // scale cost map
+//   scaler->scale(coarseBox);
+//   scaler->calculateCoarsePinIndices(pinIndices, coarsePinIndices);
+//   // route in coarse cost map
+//   coarseGamer->route(coarsePinIndices, coarseSweepTurns, coarseBox);
+//   bool coarseIsRouted = coarseGamer->getIsRouted();
+//   if (!coarseIsRouted)
+//   {
+//     isRoutedNet[netId] = 0;
+//     utils::log() << "gamer error: coarsely route net(id=" << netId << ") failed\n";
+//     return;
+//   }
+//   // get coarseRoutes and set it as guide
+//   auto devCoarseRoutes = coarseGamer->getRoutes();
+//   checkCudaErrors(cudaMemcpy(coarseRoutes.data(), devCoarseRoutes.get(), pinIndices.size() * MAX_ROUTE_LEN_PER_PIN * sizeof(int), cudaMemcpyDeviceToHost));
+//   fineGamer->setGuide(coarseRoutes.data(), scaler->getScaleX(), scaler->getScaleY(), scaler->getCoarseN());
+//   // route within guide
+//   fineGamer->route(pinIndices, fineSweepTurns);
+//   isRoutedNet[netId] = fineGamer->getIsRouted();
+//   if (!isRoutedNet[netId])
+//   {
+//     utils::log() << "gamer error: finely route net(id=" << netId << ") failed\n";
+//     return;
+//   }
+//   // get routes and commit it
+//   auto devRoutes = fineGamer->getRoutes();
+//   checkCudaErrors(cudaMemcpy(devAllRoutes.get() + allRoutesOffset[netId], devRoutes.get(), (allRoutesOffset[netId + 1] - allRoutesOffset[netId]) * sizeof(int), cudaMemcpyDeviceToDevice));
+// }
+
+void GPUMazeRouter::selectAccessPoints(const GRNet &net, std::vector<int> &pinIndices) const
+{
+  pinIndices.clear();
   const auto &boundingBox = net.getBoundingBox();
   utils::PointT<int> netCenter(boundingBox.cx(), boundingBox.cy());
   for (const auto &points : net.getPinAccessPoints())
@@ -492,9 +563,22 @@ std::vector<int> GPUMazeRouter::selectAccessPoints(const GRNet &net) const
     }
     if (bestAccessDist.first == 0)
       utils::log() << "Warning: the pin is hard to access." << std::endl;
-    selectedAccessPoints.insert(xyzToIdx(points[bestIndex].x, points[bestIndex].y, points[bestIndex].layerIdx, DIRECTION, N));
+    pinIndices.push_back(xyzToIdx(points[bestIndex].x, points[bestIndex].y, points[bestIndex].layerIdx, DIRECTION, N));
   }
-  return std::vector<int>(selectedAccessPoints.begin(), selectedAccessPoints.end());
+  std::sort(pinIndices.begin(), pinIndices.end());
+  auto last = std::unique(pinIndices.begin(), pinIndices.end());
+  pinIndices.erase(last, pinIndices.end());
+}
+
+utils::BoxT<int> GPUMazeRouter::getPinIndicesBoundingBox(const std::vector<int> &pinIndices, int DIRECTION, int N) const
+{
+  utils::BoxT<int> box;
+  for (int idx : pinIndices)
+  {
+    auto [x, y, z] = idxToXYZ(idx, DIRECTION, N);
+    box.Update(x, y);
+  }
+  return box;
 }
 
 #endif

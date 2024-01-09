@@ -27,7 +27,7 @@ __global__ static void calculateCoarseCost(realT *coarseWireCost, realT *coarseV
   int innerBound = 0;
   if ((z & 1) ^ DIRECTION)
   {
-    val = x > 0 && z > 0 ? wireCost + z * N * N + (y * scaleY) * N + (x - 1) * scaleX : nullptr;
+    val = x > 0 ? wireCost + z * N * N + (y * scaleY) * N + (x - 1) * scaleX : nullptr;
     outerScale = scaleY;
     outerBound = min(scaleY, Y - y * scaleY);
     innerScale = scaleX;
@@ -35,7 +35,7 @@ __global__ static void calculateCoarseCost(realT *coarseWireCost, realT *coarseV
   }
   else
   {
-    val = y > 0 && z > 0 ? wireCost + z * N * N + (x * scaleX) * N + (y - 1) * scaleY : nullptr;
+    val = y > 0 ? wireCost + z * N * N + (x * scaleX) * N + (y - 1) * scaleY : nullptr;
     outerScale = scaleX;
     outerBound = min(scaleX, X - x * scaleX);
     innerScale = scaleY;
@@ -71,7 +71,7 @@ __global__ static void calculateCoarseCost(realT *coarseWireCost, realT *coarseV
             cnt += 1.0f;
           }
         }
-        acc -= val[x];
+        acc -= val[t];
       }
       wc += res / cnt;
     }
@@ -101,19 +101,25 @@ GridScaler::GridScaler(int DIRECTION, int N, int X, int Y, int LAYER, int scaleX
   devCoarseViaCost = cuda_make_shared<realT[]>(LAYER * coarseN * coarseN);
 }
 
-std::vector<int> GridScaler::calculateCoarsePinIndices(const std::vector<int> &pinIndices)
+void GridScaler::calculateCoarsePinIndices(const std::vector<int> &pinIndices, std::vector<int> &coarsePinIndices)
 {
-  std::vector<int> coarsePinIndices(pinIndices.size());
-  std::transform(pinIndices.begin(), pinIndices.end(), coarsePinIndices.begin(), [&](int idx)
-                 {
+  coarsePinIndices.clear();
+  // utils::log() << printf("fine pin -> coarse pin\n") << std::endl;
+  for (int idx : pinIndices)
+  {
     auto [x, y, z] = idxToXYZ(idx, DIRECTION, N);
-    return xyzToIdx(x / scaleX, y / scaleY, z, DIRECTION, coarseN); });
-  return std::move(coarsePinIndices);
+    coarsePinIndices.push_back(xyzToIdx(x / scaleX, y / scaleY, z, DIRECTION, coarseN));
+    // printf("(%d, %d, %d) -> (%d, %d, %d)\n", x, y, z, x / scaleX, y / scaleY, z);
+  }
+  std::sort(coarsePinIndices.begin(), coarsePinIndices.end());
+  auto last = std::unique(coarsePinIndices.begin(), coarsePinIndices.end());
+  coarsePinIndices.erase(last, coarsePinIndices.end());
 }
 
 utils::BoxT<int> GridScaler::calculateCoarseBoudingBox(const utils::BoxT<int> &box)
 {
-  return utils::BoxT<int>(box.lx() / scaleX, box.ly() / scaleY, (box.hx() + scaleX - 1) / scaleY, (box.hy() + scaleY - 1) / scaleY);
+  return utils::BoxT<int>(box.lx() / scaleX, box.ly() / scaleY,
+                          std::min(coarseX, (box.hx() + scaleX - 1) / scaleX), std::min(coarseY, (box.hy() + scaleY - 1) / scaleY));
 }
 
 void GridScaler::scale()
@@ -127,7 +133,7 @@ void GridScaler::scale(const utils::BoxT<int> &coarseBox)
   int coarseOffsetY = coarseBox.ly();
   int coarseLengthX = coarseBox.width();
   int coarseLengthY = coarseBox.height();
-  calculateCoarseCost<<<dim3((coarseX + 31) / 32, (coarseY + 31) / 32, LAYER), dim3(32, 32, 1)>>>(
+  calculateCoarseCost<<<dim3((coarseLengthX + 31) / 32, (coarseLengthY + 31) / 32, LAYER), dim3(32, 32, 1)>>>(
       devCoarseWireCost.get(), devCoarseViaCost.get(), devWireCost.get(), devViaCost.get(),
       coarseOffsetX, coarseOffsetY, coarseLengthX, coarseLengthY,
       coarseN, coarseX, coarseY, scaleX, scaleY, DIRECTION, N, X, Y, LAYER);

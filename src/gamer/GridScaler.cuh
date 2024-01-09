@@ -20,7 +20,7 @@ public:
   cuda_shared_ptr<const realT[]> getCoarseWireCost() const { return devCoarseWireCost; }
   cuda_shared_ptr<const realT[]> getCoarseViaCost() const { return devCoarseViaCost; }
 
-  std::vector<int> calculateCoarsePinIndices(const std::vector<int> &pinIndices);
+  void calculateCoarsePinIndices(const std::vector<int> &pinIndices, std::vector<int> &coarsePinIndices);
   utils::BoxT<int> calculateCoarseBoudingBox(const utils::BoxT<int> &box);
 
   void scale();

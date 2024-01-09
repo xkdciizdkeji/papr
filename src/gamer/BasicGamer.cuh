@@ -28,6 +28,7 @@ private:
   cuda_unique_ptr<realT[]> devWireCostSum;
   cuda_unique_ptr<realT[]> devDist;
   cuda_unique_ptr<int[]> devPrev;
+  cuda_unique_ptr<int[]> devMark;
 
   cuda_shared_ptr<const realT[]> devWireCost;
   cuda_shared_ptr<const realT[]> devViaCost;

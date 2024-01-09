@@ -4,7 +4,6 @@
 #include <vector>
 #include <cuda_runtime.h>
 #include <memory>
-#include <boost/smart_ptr/shared_ptr.hpp>
 #include "helper_math.h"
 #include "helper_cuda.h"
 #include "../gr/GRTree.h"
@@ -38,7 +37,7 @@ template <class T>
 using cuda_unique_ptr = std::unique_ptr<T, CudaDeleter<typename std::unique_ptr<T>::element_type>>;
 
 template <class T>
-using cuda_shared_ptr = boost::shared_ptr<T>;
+using cuda_shared_ptr = std::shared_ptr<T>;
 
 template <class T, std::enable_if_t<std::is_array_v<T> && std::extent_v<T> == 0, int> = 0>
 inline auto cuda_make_unique(const size_t size)
@@ -46,7 +45,7 @@ inline auto cuda_make_unique(const size_t size)
   using element_type = std::remove_extent_t<T>;
   element_type *dev_ptr = nullptr;
   checkCudaErrors(cudaMalloc(&dev_ptr, size * sizeof(element_type)));
-  return cuda_unique_ptr<T>(dev_ptr);
+  return cuda_unique_ptr<T>(dev_ptr, CudaDeleter<element_type>{});
 }
 
 template <class T, std::enable_if_t<std::is_array_v<T> && std::extent_v<T> == 0, int> = 0>
@@ -55,39 +54,14 @@ inline auto cuda_make_shared(const size_t size)
   using element_type = std::remove_extent_t<T>;
   element_type *dev_ptr = nullptr;
   checkCudaErrors(cudaMalloc(&dev_ptr, size * sizeof(element_type)));
-  return cuda_shared_ptr<T>(dev_ptr, CudaDeleter<typename boost::shared_ptr<T>::element_type>());
+  return cuda_shared_ptr<T>(dev_ptr, CudaDeleter<element_type>{});
 }
 
 template <class T, class... Args, std::enable_if_t<!std::is_array_v<T> || std::extent_v<T> != 0, int> = 0>
+inline void cuda_make_unique(Args &&...) = delete;
+
+template <class T, class... Args, std::enable_if_t<!std::is_array_v<T> || std::extent_v<T> != 0, int> = 0>
 inline void cuda_make_shared(Args &&...) = delete;
-
-// -------------------------------
-// simple cuda buffer
-// -------------------------------
-
-template <class T>
-class cuda_buffer
-{
-public:
-  using element_type = typename cuda_unique_ptr<T[]>::element_type;
-  using pointer = typename cuda_unique_ptr<T[]>::pointer;
-
-  cuda_buffer() : m_size(0), m_ptr(nullptr) {}
-  pointer get() { return m_ptr.get(); }
-  size_t size() { return m_size; }
-  void resize(const size_t new_size)
-  {
-    if (m_size < new_size)
-    {
-      m_ptr = cuda_make_unique<T[]>(new_size);
-      m_size = new_size;
-    }
-  }
-
-private:
-  size_t m_size;
-  cuda_unique_ptr<T[]> m_ptr;
-};
 
 // -------------------------------
 // Common device functions

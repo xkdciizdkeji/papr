@@ -15,11 +15,15 @@ public:
   GPUMazeRouter(std::vector<GRNet> &nets, GridGraph &graph, const Parameters &params);
 
   void route(const std::vector<int> &netIndices, int sweepTurns, int margin);
-  void commit(const std::vector<int> &netIndices);
+  // void routeTwoStep(const std::vector<int> &netIndices, int coarseSweepTurns, int fineSweepTurns, int coarseMargin);
+  void apply(const std::vector<int> &netIndices);
   void getOverflowNetIndices(std::vector<int> &netIndices) const;
 
 private:
-  std::vector<int> selectAccessPoints(const GRNet &net) const;
+  void routeOneNet(int netId, const std::vector<int> &pinIndices, int sweepTurns, const utils::BoxT<int> &box);
+  // void routeOneNetTwoStep(int netId, const std::vector<int> &pinIndices, int coarseSweepTurns, int fineSweepTurns, const utils::BoxT<int> &coarseBox);
+  void selectAccessPoints(const GRNet &net, std::vector<int> &pinIndices) const;
+  utils::BoxT<int> getPinIndicesBoundingBox(const std::vector<int> &pinIndices, int DIRECTION, int N) const;
 
 private:
   const Parameters &parameters;
@@ -29,9 +33,7 @@ private:
   int DIRECTION;
   int X, Y, LAYER;
   int N;
-  int numNets;
   int maxNumPins;
-  int scaleX, scaleY;
 
   realT unitLengthWireCost;
   realT unitViaCost;
@@ -59,9 +61,14 @@ private:
   std::vector<int> allRoutesOffset;
   cuda_unique_ptr<int[]> devAllRoutesOffset;
 
-  std::unique_ptr<BasicGamer> basicGamer;
-  std::unique_ptr<GuidedGamer> guidedGamer;
-  std::unique_ptr<GridScaler> gridScaler;
+  // one-step routing
+  std::unique_ptr<BasicGamer> gamer;
+  // two-step routing
+  // std::unique_ptr<GridScaler> scaler;
+  // std::unique_ptr<BasicGamer> coarseGamer;
+  // std::unique_ptr<GuidedGamer> fineGamer;
+  // std::vector<int> coarseRoutes;
+  // std::vector<int> coarsePinIndices;
 };
 
 #endif

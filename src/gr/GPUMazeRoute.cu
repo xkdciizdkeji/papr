@@ -10,14 +10,15 @@ GPUMazeRoute::~GPUMazeRoute()
 {
 }
 
-void GPUMazeRoute::route(const std::vector<int> &netIndices, int sweepTurns, int margin)
+void GPUMazeRoute::route(const std::vector<int> &netIndices, int sweepTurn, int margin)
 {
-  router->route(netIndices, sweepTurns, margin);
+  router->route(netIndices, sweepTurn, margin);
+  // router->routeTwoStep(netIndices, 5, 8, 10);
 }
 
-void GPUMazeRoute::commit(const std::vector<int> &netIndices)
+void GPUMazeRoute::apply(const std::vector<int> &netIndices)
 {
-  router->commit(netIndices);
+  router->apply(netIndices);
 }
 
 void GPUMazeRoute::getOverflowNetIndices(std::vector<int> &netIndices) const
