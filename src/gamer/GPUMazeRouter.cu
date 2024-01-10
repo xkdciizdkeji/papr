@@ -385,6 +385,18 @@ void GPUMazeRouter::getOverflowNetIndices(std::vector<int> &netIndices) const
 void GPUMazeRouter::apply(const std::vector<int> &netIndices)
 {
   checkCudaErrors(cudaMemcpy(allRoutes.data(), devAllRoutes.get(), allRoutes.size() * sizeof(int), cudaMemcpyDeviceToHost));
+
+  // std::ofstream errLog("extract_error.log");
+  // errLog << DIRECTION << " " << N << " " << X << " " << Y << " " << LAYER << "\n\n";
+  // for (int netId : netIndices)
+  // {
+  //   const int *routes = allRoutes.data() + allRoutesOffset[netId];
+  //   for(int i = 0; i < routes[0]; i += 2)
+  //     errLog << routes[1 + i] << " " << routes[2 + i] << "\n";
+  //   errLog << "\n";
+  // }
+  // errLog.close();
+
   // TODO: bactching and multi-threading
   for (int netId : netIndices)
   {
