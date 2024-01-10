@@ -11,7 +11,9 @@ class GRNet {
 public:
     // GRNet(const Net& baseNet, const Design& design, const GridGraph& gridGraph);
     GRNet(int index, const std::string &name, const std::vector<std::vector<std::tuple<int, int, int>>> &pinAccessPoints);
-    
+
+    bool overlap(GRNet net) const;
+
     int getIndex() const { return index; }
     std::string getName() const { return name; }
     int getNumPins() const { return pinAccessPoints.size(); }

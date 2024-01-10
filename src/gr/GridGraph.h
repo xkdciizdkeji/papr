@@ -99,6 +99,7 @@ private:
     void commit(const int layerIndex, const utils::PointT<int> lower, const CapacityT demand);
     void commitWire(const int layerIndex, const utils::PointT<int> lower, const bool reverse = false);
     void commitVia(const int layerIndex, const utils::PointT<int> loc, const bool reverse = false);
+    void commitNonStackVia(const int layerIndex, const utils::PointT<int> loc, const bool reverse);
 };
 
 template <typename Type>

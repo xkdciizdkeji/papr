@@ -15,6 +15,7 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 # enable cuda option
 option(ENABLE_CUDA "enable cuda for gpu maze routing" OFF)
+option(ENABLE_ISSSORT "enable iss sort" OFF)
 
 # Project's name
 project(CUGR LANGUAGES C CXX)
@@ -31,11 +32,16 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 if(ENABLE_CUDA)
-  set(CMAKE_CUDA_ARCHITECTURES native)
+  # set(CMAKE_CUDA_ARCHITECTURES native)
   enable_language(CUDA)
   set(CMAKE_CUDA_STANDARD 17)
   set(CMAKE_CUDA_STANDARD_REQUIRED ON)
   set(CMAKE_CUDA_EXTENSIONS OFF)
+  # include(FindCUDA/select_compute_arch)
+  # CUDA_DETECT_INSTALLED_GPUS(INSTALLED_GPU_CCS_1)
+  # string(STRIP "${INSTALLED_GPU_CCS_1}" INSTALLED_GPU_CCS_2)
+  # string(REPLACE " " ";" INSTALLED_GPU_CCS_3 "${INSTALLED_GPU_CCS_2}")
+  # string(REPLACE "." "" CUDA_ARCH_LIST "${INSTALLED_GPU_CCS_3}")
 endif()
 
 set(PATH_FLUTE ${CMAKE_CURRENT_SOURCE_DIR}/flute)
@@ -75,6 +81,10 @@ if(ENABLE_CUDA)
   target_compile_definitions(route PUBLIC -DENABLE_CUDA)
 endif()
 
+if(ENABLE_ISSSORT)
+  target_compile_definitions(route PUBLIC -DENABLE_ISSSORT)
+endif()
+
 #################
 # Linker Flags  #
 #################
@@ -84,8 +94,11 @@ if(MSVC)
     target_link_options(route PUBLIC /NODEFAULTLIB:libcmt.lib)
   endif()
 else()
-  # set_target_properties(route PROPERTIES LINK_FLAGS "-static -Wl,--whole-archive -rdynamic -lpthread -Wl,--no-whole-archive")
-  set_target_properties(route PROPERTIES LINK_FLAGS "-lpthread")
+  if(ENABLE_CUDA)
+    set_target_properties(route PROPERTIES LINK_FLAGS "-lpthread -Wl,--whole-archive -rdynamic -Wl,--no-whole-archive")
+  else()
+    set_target_properties(route PROPERTIES LINK_FLAGS "-static -Wl,--whole-archive -rdynamic -lpthread -Wl,--no-whole-archive")
+  endif()
 endif()
 
 ##################

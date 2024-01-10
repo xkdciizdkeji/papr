@@ -2,10 +2,13 @@
 #include <boost/geometry.hpp>
 
 using namespace std;
+constexpr unsigned int X = 0;
+constexpr unsigned int Y = 1;
 
 vector<vector<int>> &Scheduler::scheduleOrderEq(int numofThreads) {
     vector<int> routerIds;
     for (int id = 0; id < routers.size(); ++id) routerIds.push_back(id);
+
     if (numofThreads == 1) {
         // simple case
         for (int routerId : routerIds) batches.push_back({routerId});
@@ -56,14 +59,14 @@ void Scheduler::initSet(vector<int> jobIdxes) {
 
 void Scheduler::updateSet(int jobIdx) {
     for (const auto &guide : routers[jobIdx].guides) {
-        boostBox box(boostPoint(guide[0].low, guide[1].low), boostPoint(guide[0].high, guide[1].high));
+        boostBox box(boostPoint(guide[X].low, guide[Y].low), boostPoint(guide[X].high, guide[Y].high));
         rtrees[guide.layerIdx].insert({box, jobIdx});
     }
 }
 
 bool Scheduler::hasConflict(int jobIdx) {
     for (const auto &guide : routers[jobIdx].guides) {
-        boostBox box(boostPoint(guide[0].low, guide[1].low), boostPoint(guide[0].high, guide[1].high));
+        boostBox box(boostPoint(guide[X].low, guide[Y].low), boostPoint(guide[X].high, guide[Y].high));
 
         std::vector<std::pair<boostBox, int>> results;
         rtrees[guide.layerIdx].query(bgi::intersects(box), std::back_inserter(results));

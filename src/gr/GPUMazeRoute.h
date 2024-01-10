@@ -22,7 +22,7 @@ public:
 
 private:
   std::pair<std::vector<int>, std::vector<int>> batching(const std::vector<int> &netIndices) const;
-  std::shared_ptr<GRTreeNode> extractGRTree(int *treeMap, const int *routes, int rootIdx) const;
+  std::shared_ptr<GRTreeNode> extractGRTree(const int *routes, int rootIdx) const;
   std::vector<int> selectAccessPoints(const GRNet &net) const;
 
 private:
