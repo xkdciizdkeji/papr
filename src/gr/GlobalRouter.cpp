@@ -85,7 +85,7 @@ void GlobalRouter::route()
     for (const int netIndex : netIndices) {
         PatternRoute patternRoute(nets[netIndex], gridGraph, parameters);
         patternRoute.constructSteinerTree();
-        patternRoute.constructRoutingDAG();
+        // patternRoute.constructRoutingDAG();
         PatternRoutes.insert(std::make_pair(netIndex,patternRoute));
     }
     double t_cst = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t_cst_b).count();
@@ -95,10 +95,7 @@ void GlobalRouter::route()
     for (const vector<int>& batch : batches) {
         runJobsMT(batch.size(),numofThreads, [&](int jobIdx) {
             auto patternRoute = PatternRoutes.find(batch[jobIdx])->second;
-            // mtx.lock();
-            // patternRoute.constructSteinerTree();
-            // mtx.unlock();
-            // patternRoute.constructRoutingDAG();
+            patternRoute.constructRoutingDAG();
             patternRoute.run();
             gridGraph.commitTree(nets[batch[jobIdx]].getRoutingTree());
         });
