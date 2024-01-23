@@ -51,6 +51,7 @@ void GlobalRouter::route()
     for (auto id : netIndices) routers.emplace_back(nets[id]);
     vector<vector<int>> batches = getBatches(routers,netIndices);
 
+
     // for (const int netIndex : netIndices)
     // {
     //     PatternRoute patternRoute(nets[netIndex], gridGraph, parameters);
@@ -70,8 +71,16 @@ void GlobalRouter::route()
 
     std::mutex mtx;
     for (const vector<int>& batch : batches) {
+        // for(int i=0;i<batch.size();i++){
+        //     PatternRoutes.find(batch[i])->second.constructSteinerTree();
+        //     PatternRoutes.find(batch[i])->second.constructRoutingDAG();
+        // }
         runJobsMT(batch.size(), numofThreads, [&](int jobIdx) {
             auto patternRoute = PatternRoutes.find(batch[jobIdx])->second;
+            // mtx.lock();
+            // patternRoute.constructSteinerTree();
+            // mtx.unlock();
+            // patternRoute.constructRoutingDAG();
             patternRoute.run();
             mtx.lock();
             gridGraph.commitTree(nets[batch[jobIdx]].getRoutingTree());

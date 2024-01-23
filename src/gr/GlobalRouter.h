@@ -40,5 +40,6 @@ private:
     void printStatistics() const;
 
     void runJobsMT(int numJobs, int numofThreads, const std::function<void(int)>& handle);
-    std::vector<std::vector<int>> getBatches(std::vector<SingleNetRouter>& routers, const std::vector<int>& netsToRoute);
+    void runJobsMT1(int numJobs, int numofThreads, const std::function<void(int)> &handle);
+    std::vector<std::vector<int> > getBatches(std::vector<SingleNetRouter> &routers, const std::vector<int> &netsToRoute);
 };

@@ -97,7 +97,8 @@ else()
   if(ENABLE_CUDA)
     set_target_properties(route PROPERTIES LINK_FLAGS "-lpthread -Wl,--whole-archive -rdynamic -Wl,--no-whole-archive")
   else()
-    set_target_properties(route PROPERTIES LINK_FLAGS "-static -Wl,--whole-archive -rdynamic -lpthread -Wl,--no-whole-archive")
+    # set_target_properties(route PROPERTIES LINK_FLAGS "-static -Wl,--whole-archive -rdynamic -lpthread -Wl,--no-whole-archive")
+    set_target_properties(route PROPERTIES LINK_FLAGS "-lpthread -Wl,--whole-archive -rdynamic -Wl,--no-whole-archive -pthread")
   endif()
 endif()
 
@@ -106,6 +107,9 @@ endif()
 ##################
 target_link_libraries(route PRIVATE flute)
 target_link_libraries(route PRIVATE ${Boost_LIBRARIES})
+# target_link_libraries(route PRIVATE /usr/lib/x86_64-linux-gnu/libprofiler.so.0)
+# target_link_libraries(route PRIVATE -lprofiler)
+target_link_libraries(route PRIVATE -pg)
 
 add_custom_command(
   TARGET route POST_BUILD
