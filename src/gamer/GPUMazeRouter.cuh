@@ -6,24 +6,25 @@
 #include "../gr/GridGraph.h"
 #include "gamer_utils.cuh"
 #include "BasicGamer.cuh"
+#include "Grid2DExtractor.cuh"
+#include "GridScaler2D.cuh"
+#include "BasicGamer2D.cuh"
 #include "GuidedGamer.cuh"
-#include "GridScaler.cuh"
 
 class GPUMazeRouter
 {
 public:
   GPUMazeRouter(std::vector<GRNet> &nets, GridGraph &graph, const Parameters &params);
 
-  void route(const std::vector<int> &netIndices, int sweepTurns, int margin);
-  // void routeTwoStep(const std::vector<int> &netIndices, int coarseSweepTurns, int fineSweepTurns, int coarseMargin);
-  void apply(const std::vector<int> &netIndices);
+  // void route(const std::vector<int> &netIndices, int numTurns, int margin);
+  void routeTwoStep(const std::vector<int> &netIndices, int numCoarseTurns, int numFineTurns, int coarseMargin);
+  void applyToCpu(const std::vector<int> &netIndices);
   void getOverflowNetIndices(std::vector<int> &netIndices) const;
 
 private:
-  void routeOneNet(int netId, const std::vector<int> &pinIndices, int sweepTurns, const utils::BoxT<int> &box);
-  // void routeOneNetTwoStep(int netId, const std::vector<int> &pinIndices, int coarseSweepTurns, int fineSweepTurns, const utils::BoxT<int> &coarseBox);
   void selectAccessPoints(const GRNet &net, std::vector<int> &pinIndices) const;
   utils::BoxT<int> getPinIndicesBoundingBox(const std::vector<int> &pinIndices, int DIRECTION, int N) const;
+  std::shared_ptr<GRTreeNode> extractGRTree(const int *routes, int rootIdx) const;
 
 private:
   const Parameters &parameters;
@@ -62,13 +63,12 @@ private:
   cuda_unique_ptr<int[]> devAllRoutesOffset;
 
   // one-step routing
-  std::unique_ptr<BasicGamer> gamer;
+  // std::unique_ptr<BasicGamer> gamer;
   // two-step routing
-  // std::unique_ptr<GridScaler> scaler;
-  // std::unique_ptr<BasicGamer> coarseGamer;
-  // std::unique_ptr<GuidedGamer> fineGamer;
-  // std::vector<int> coarseRoutes;
-  // std::vector<int> coarsePinIndices;
+  std::unique_ptr<Grid2DExtractor> extractor2D;
+  std::unique_ptr<GridScaler2D> scaler2D;
+  std::unique_ptr<BasicGamer2D> coarseGamer2D;
+  std::unique_ptr<GuidedGamer> fineGamer;
 };
 
 #endif

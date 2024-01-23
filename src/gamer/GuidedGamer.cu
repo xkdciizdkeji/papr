@@ -103,17 +103,15 @@ __global__ static void sweepWireShared(realT *distAtRow, int *prevAtRow, const r
 #pragma unroll
   for (int cur = threadIdx.x * 2; cur <= threadIdx.x * 2 + 1; cur++)
   {
-    realT val = dL[cur];
-    int p = pL[cur];
     if (dL[cur] > dR[PACK_ROW_SIZE - 1 - cur])
     {
-      val = dR[PACK_ROW_SIZE - 1 - cur];
-      p = pR[PACK_ROW_SIZE - 1 - cur];
+      distAtRow[cur] = dR[PACK_ROW_SIZE - 1 - cur];
+      prevAtRow[cur] = offset + pR[PACK_ROW_SIZE - 1 - cur];
     }
-    if (val < distAtRow[cur] && cur != p)
+    else
     {
-      distAtRow[cur] = val;
-      prevAtRow[cur] = offset + p;
+      distAtRow[cur] = dL[cur];
+      prevAtRow[cur] = offset + pL[cur];
     }
   }
   __syncthreads();
@@ -173,17 +171,15 @@ __global__ static void sweepWireGlobal(realT *distAtRow, int *prevAtRow, char *w
 
   for (int cur = threadIdx.x; cur < length; cur += blockDim.x)
   {
-    realT val = dL[cur];
-    int p = pL[cur];
     if (dL[cur] > dR[length - 1 - cur])
     {
-      val = dR[length - 1 - cur];
-      p = pR[length - 1 - cur];
+      distAtRow[cur] = dR[length - 1 - cur];
+      prevAtRow[cur] = offset + pR[length - 1 - cur];
     }
-    if (val < distAtRow[cur] && cur != p)
+    else
     {
-      distAtRow[cur] = val;
-      prevAtRow[cur] = offset + p;
+      distAtRow[cur] = dL[cur];
+      prevAtRow[cur] = offset + pL[cur];
     }
   }
 }
@@ -218,11 +214,8 @@ __global__ static void sweepVia(realT *distAtRow, int *prevAtRow, const realT *c
   }
   for (int z = 0; z < VIA_SEG_SIZE; z++)
   {
-    if (p[z] != z)
-    {
-      distAtRow[posAtViaseg[z]] = d[z];
-      prevAtRow[posAtViaseg[z]] = posAtViaseg[p[z]];
-    }
+    distAtRow[posAtViaseg[z]] = d[z];
+    prevAtRow[posAtViaseg[z]] = posAtViaseg[p[z]];
   }
 }
 
@@ -233,15 +226,6 @@ __global__ static void pinIndicesToPositions(int *pinPositions, const int *pinIn
     pinPositions[i] = idxPosMap[pinIndices[i]];
 }
 
-__global__ static void cleanDistPrev(realT *distAtRow, int *prevAtRow, const int *markAtRow, int numRows)
-{
-  int pos = blockIdx.x * blockDim.x + threadIdx.x;
-  if (pos >= numRows * PACK_ROW_SIZE)
-    return;
-  prevAtRow[pos] = pos;
-  distAtRow[pos] = markAtRow[pos] ? 0.f : INFINITY_DISTANCE;
-}
-
 __global__ static void setRootPin(int *markAtRow, int *isRoutedPin, const int *pinPositions, int numPins)
 {
   for (int i = 1; i < numPins; i++)
@@ -250,9 +234,18 @@ __global__ static void setRootPin(int *markAtRow, int *isRoutedPin, const int *p
   markAtRow[pinPositions[0]] = 1;
 }
 
+__global__ static void cleanDist(realT *distAtRow, const int *markAtRow, int numRows)
+{
+  int pos = blockIdx.x * blockDim.x + threadIdx.x;
+  if (pos < numRows * PACK_ROW_SIZE)
+    distAtRow[pos] = markAtRow[pos] ? 0.f : INFINITY_DISTANCE;
+}
+
 // 回溯一条路径
-__global__ static void tracePath(int *markAtRow, int *isRoutedPin, int *routes, const realT *distAtRow, const int *prevAtRow,
-                                 const int *idxAtRow, const int *locAtRow, const int *posAtViaseg, const int *pinPositions, int numPins)
+__global__ static void tracePath(int *markAtRow, int *isRoutedPin, int *routes,
+                                 const realT *distAtRow, const int *allPrevAtRow,
+                                 const int *idxAtRow, const int *locAtRow, const int *posAtViaseg,
+                                 const int *pinPositions, int numPins, int numRows, int numTurns)
 {
   realT minDist = INFINITY_DISTANCE;
   int pinId = -1, pinPos = -1;
@@ -272,16 +265,18 @@ __global__ static void tracePath(int *markAtRow, int *isRoutedPin, int *routes, 
   }
   if (pinId == -1)
   {
-    printf("GuideGamer: trace path failed\n");
+    // printf("guided gamer: trace path failed\n");
     return;
   }
   isRoutedPin[pinId] = 1;
 
   int currPos = pinPos;
   int currLoc = locAtRow[currPos]; // currPos对于的gcell在Viasegs的位置
-  while (!markAtRow[currPos])
+  for (int t = numTurns - 1; t >= 0; t--)
   {
-    int prevPos = prevAtRow[currPos];
+    int prevPos = allPrevAtRow[t * numRows * PACK_ROW_SIZE + currPos];
+    if (prevPos == currPos)
+      continue;
     int prevLoc = locAtRow[prevPos];
     // fill routes
     routes[++routes[0]] = min(idxAtRow[currPos], idxAtRow[prevPos]);
@@ -295,20 +290,14 @@ __global__ static void tracePath(int *markAtRow, int *isRoutedPin, int *routes, 
       int startI = min(currI, prevI);
       int endI = max(currI, prevI);
       for (int i = startI; i <= endI; i++)
-      {
-        if (i != prevI)
-          markAtRow[posAtViaseg[offset + i]] = 1;
-      }
+        markAtRow[posAtViaseg[offset + i]] = 1;
     }
     else // wires
     {
       int startPos = min(currPos, prevPos);
       int endPos = max(currPos, prevPos);
       for (int pos = startPos; pos <= endPos; pos++)
-      {
-        if (pos != prevPos)
-          markAtRow[pos] = 1;
-      }
+        markAtRow[pos] = 1;
     }
     currPos = prevPos;
     currLoc = prevLoc;
@@ -340,41 +329,27 @@ bool GuidedGamer::getIsRouted() const
                      { return x & y; });
 }
 
-void GuidedGamer::setGuide(const int *routes, int scaleX, int scaleY, int coarseN)
+void GuidedGamer::setGuide2D(const std::vector<utils::BoxT<int>> &boxes)
 {
   std::vector<std::pair<int3, int3>> wires;
   std::vector<std::pair<int3, int3>> viasegs;
   // collect wire segments and via segments
-  for (int i = 0; i < routes[0]; i += 2)
+  for (const auto &box : boxes)
   {
-    auto [startX, startY, startZ] = idxToXYZ(routes[1 + i], DIRECTION, coarseN);
-    auto [endX, endY, endZ] = idxToXYZ(routes[2 + i], DIRECTION, coarseN);
-    if (startZ == endZ) // coarse wires
+    // collect wires
+    for (int z = 0; z < LAYER; z++)
     {
-      if ((startZ & 1) ^ DIRECTION) // Y-X
-        for (int y = startY * scaleY; y < std::min((startY + 1) * scaleY, Y); y++)
-          wires.emplace_back(make_int3(startX * scaleX, y, startZ), make_int3(std::min((endX + 1) * scaleX, X) - 1, y, startZ));
-      else // X-Y
-        for (int x = startX * scaleX; x < std::min((startX + 1) * scaleX, X); x++)
-          wires.emplace_back(make_int3(x, startY * scaleY, startZ), make_int3(x, std::min((endY + 1) * scaleY, Y) - 1, startZ));
+      if ((z & 1) ^ DIRECTION) // YX
+        for (int y = box.ly(); y < box.hy(); y++)
+          wires.emplace_back(make_int3(box.lx(), y, z), make_int3(box.hx() - 1, y, z));
+      else // XY
+        for (int x = box.lx(); x < box.hx(); x++)
+          wires.emplace_back(make_int3(x, box.ly(), z), make_int3(x, box.hy() - 1, z));
     }
-    else // coarse vias
-    {
-      // wire segments within coarse vias
-      for (int z = startZ; z <= endZ; z++)
-      {
-        if ((z & 1) ^ DIRECTION) // Y-X
-          for (int y = startY * scaleY; y < std::min((startY + 1) * scaleY, Y); y++)
-            wires.emplace_back(make_int3(startX * scaleX, y, z), make_int3(std::min((endX + 1) * scaleX, X) - 1, y, z));
-        else // X-Y
-          for (int x = startX * scaleX; x < std::min((startX + 1) * scaleX, X); x++)
-            wires.emplace_back(make_int3(x, startY * scaleY, z), make_int3(x, std::min((endY + 1) * scaleY, Y) - 1, z));
-      }
-      // via segments
-      for (int x = startX * scaleX; x < std::min((startX + 1) * scaleX, X); x++)
-        for (int y = startY * scaleY; y < std::min((startY + 1) * scaleY, Y); y++)
-          viasegs.emplace_back(make_int3(x, y, startZ), make_int3(x, y, endZ));
-    }
+    // collect viasegs
+    for (int x = box.lx(); x < box.hx(); x++)
+      for (int y = box.ly(); y < box.hy(); y++)
+        viasegs.emplace_back(make_int3(x, y, 0), make_int3(x, y, LAYER - 1));
   }
   // sort wire segments and via segments
   auto compareWire = [&](const std::pair<int3, int3> &left, const std::pair<int3, int3> &right)
@@ -505,33 +480,32 @@ void GuidedGamer::setGuide(const int *routes, int scaleX, int scaleY, int coarse
   // reserve memory
   reserve(numWires, numRows, numLongWires, numWorkplace, numViasegs);
 
-  printf("numLongWires: %d\n", numLongWires);
-  printf("numWorkplace: %d\n", numWorkplace);
-  printf("longWireEndRowsOffset: %d\n", longWireEndRowsOffset);
-  printf("numRows: %d\n", numRows);
-  printf("numWires: %d\n", numWires);
-  printf("numViasegs: %d\n", numViasegs);
-
-  printf("wires:\n");
-  for (int i = 0; i < wires.size(); i++)
-  {
-    const auto &[p, q] = wires[i];
-    const auto &[offset, startIdx, endIdx] = wirePackPlan[i];
-    printf("offset: %d, len: %d : (%d, %d, %d) -> (%d, %d, %d)\n", offset, endIdx - startIdx + 1, p.x, p.y, p.z, q.x, q.y, q.z);
-  }
-  printf("viasegs:\n");
-  for (int i = 0; i < viasegs.size(); i++)
-  {
-    const auto &[p, q] = viasegs[i];
-    const auto &[offset, startIdx, endIdx] = viasegPackPlan[i];
-    printf("offset: %d: (%d, %d, %d) -> (%d, %d, %d)\n", offset, p.x, p.y, p.z, q.x, q.y, q.z);
-  }
-  printf("longwires:\n");
-  for (int i = 0; i < longWireLengths.size(); i++)
-  {
-    printf("offset: %d, length: %d\n", longWireOffsets[i], longWireLengths[i]);
-  }
-  printf("numWorkplace: %d\n", numWorkplace);
+  // printf("numLongWires: %d\n", numLongWires);
+  // printf("numWorkplace: %d\n", numWorkplace);
+  // printf("longWireEndRowsOffset: %d\n", longWireEndRowsOffset);
+  // printf("numRows: %d\n", numRows);
+  // printf("numWires: %d\n", numWires);
+  // printf("numViasegs: %d\n", numViasegs);
+  // printf("wires:\n");
+  // for (int i = 0; i < wires.size(); i++)
+  // {
+  //   const auto &[p, q] = wires[i];
+  //   const auto &[offset, startIdx, endIdx] = wirePackPlan[i];
+  //   printf("offset: %d, len: %d : (%d, %d, %d) -> (%d, %d, %d)\n", offset, endIdx - startIdx + 1, p.x, p.y, p.z, q.x, q.y, q.z);
+  // }
+  // printf("viasegs:\n");
+  // for (int i = 0; i < viasegs.size(); i++)
+  // {
+  //   const auto &[p, q] = viasegs[i];
+  //   const auto &[offset, startIdx, endIdx] = viasegPackPlan[i];
+  //   printf("offset: %d: (%d, %d, %d) -> (%d, %d, %d)\n", offset, p.x, p.y, p.z, q.x, q.y, q.z);
+  // }
+  // printf("longwires:\n");
+  // for (int i = 0; i < longWireLengths.size(); i++)
+  // {
+  //   printf("offset: %d, length: %d\n", longWireOffsets[i], longWireLengths[i]);
+  // }
+  // printf("numWorkplace: %d\n", numWorkplace);
 
   // pack row and viaseg
   checkCudaErrors(cudaMemcpy(devWirePackPlan.get(), wirePackPlan.data(), wirePackPlan.size() * sizeof(int3), cudaMemcpyHostToDevice));
@@ -557,37 +531,32 @@ void GuidedGamer::reserve(int nWires, int nRows, int nLongWires, int nWorkplace,
 {
   if (maxNumWires < nWires)
   {
-    utils::log() << "gamer info: reserve for wires\n";
     maxNumWires = std::max(nWires, maxNumWires * 2);
     devWirePackPlan = cuda_make_unique<int3[]>(maxNumWires);
   }
   if (maxNumRows < nRows)
   {
-    utils::log() << "gamer info: reserve for rows\n";
     maxNumRows = std::max(nRows, maxNumRows * 2);
     devIdxAtRow = cuda_make_unique<int[]>(maxNumRows * PACK_ROW_SIZE);
     devLocAtRow = cuda_make_unique<int[]>(maxNumRows * PACK_ROW_SIZE);
     devCostAtRow = cuda_make_unique<realT[]>(maxNumRows * PACK_ROW_SIZE);
     devDistAtRow = cuda_make_unique<realT[]>(maxNumRows * PACK_ROW_SIZE);
-    devPrevAtRow = cuda_make_unique<int[]>(maxNumRows * PACK_ROW_SIZE);
+    devAllPrevAtRow = cuda_make_unique<int[]>(MAX_NUM_TURNS * maxNumRows * PACK_ROW_SIZE);
     devMarkAtRow = cuda_make_unique<int[]>(maxNumRows * PACK_ROW_SIZE);
   }
   if (maxNumLongWires < numLongWires)
   {
-    utils::log() << "gamer info: reserve for longwires\n";
     maxNumLongWires = std::max(nLongWires, 2 * maxNumLongWires);
     devLongWireLengths = cuda_make_unique<int[]>(maxNumLongWires);
     devLongWireOffsets = cuda_make_unique<int[]>(maxNumLongWires);
   }
   if (maxNumWorkplace < nWorkplace)
   {
-    utils::log() << "gamer info: reserve for workplace\n";
     maxNumWorkplace = std::max(nWorkplace, maxNumWorkplace * 2);
     devWorkplace = cuda_make_unique<char[]>(maxNumWorkplace * (4 * sizeof(realT) + 2 * sizeof(int)));
   }
   if (maxNumViasegs < nViasegs)
   {
-    utils::log() << "gamer info: reserve for viasegs\n";
     maxNumViasegs = std::max(nViasegs, maxNumViasegs * 2);
     devViasegPackPlan = cuda_make_unique<int3[]>(maxNumViasegs);
     devPosAtViaseg = cuda_make_unique<int[]>(maxNumViasegs * VIA_SEG_SIZE);
@@ -595,7 +564,7 @@ void GuidedGamer::reserve(int nWires, int nRows, int nLongWires, int nWorkplace,
   }
 }
 
-void GuidedGamer::route(const std::vector<int> &pinIndices, int sweepTurns)
+void GuidedGamer::route(const std::vector<int> &pinIndices, int numTurns)
 {
   numPins = static_cast<int>(pinIndices.size());
   checkCudaErrors(cudaMemset(devMarkAtRow.get(), 0, numRows * PACK_ROW_SIZE * sizeof(int)));
@@ -603,33 +572,31 @@ void GuidedGamer::route(const std::vector<int> &pinIndices, int sweepTurns)
   checkCudaErrors(cudaMemset(devIsRoutedPin.get(), 0, numPins * sizeof(int)));
   checkCudaErrors(cudaMemcpy(devPinIndices.get(), pinIndices.data(), numPins * sizeof(int), cudaMemcpyHostToDevice));
   pinIndicesToPositions<<<numPins, 1>>>(devPinPositions.get(), devPinIndices.get(), devIdxPosMap.get(), numPins);
-  std::vector<int> pinPositions(numPins);
-  checkCudaErrors(cudaMemcpy(pinPositions.data(), devPinPositions.get(), numPins * sizeof(int), cudaMemcpyDeviceToHost));
-  utils::log() << "pin idx -> pin pos:\n";
-  for(int i = 0; i < numPins; i++)
-  {
-    auto [x, y, z] = idxToXYZ(pinIndices[i], DIRECTION, N);
-    int r = pinPositions[i] / PACK_ROW_SIZE;
-    int c = pinPositions[i] % PACK_ROW_SIZE;
-    printf("(%d, %d, %d) -> (%d, %d)\n", x, y, z, r, c);
-  }
   setRootPin<<<1, 1>>>(devMarkAtRow.get(), devIsRoutedPin.get(), devPinPositions.get(), numPins);
-  cleanDistPrev<<<(numRows * PACK_ROW_SIZE + 1023) / 1024, 1024>>>(devDistAtRow.get(), devPrevAtRow.get(), devMarkAtRow.get(), numRows);
+  cleanDist<<<(numRows * PACK_ROW_SIZE + 1023) / 1024, 1024>>>(devDistAtRow.get(), devMarkAtRow.get(), numRows);
   for (int iter = 1; iter < pinIndices.size(); iter++)
   {
-    for (int turn = 0; turn < sweepTurns; turn++)
+    for (int turn = 0; turn < numTurns; turn++)
     {
-      sweepVia<<<(numViasegs + 1023) / 1024, 1024>>>(
-          devDistAtRow.get(), devPrevAtRow.get(), devCostAtViaseg.get(), devPosAtViaseg.get(), numViasegs);
-      sweepWireGlobal<<<numLongWires, PACK_ROW_SIZE / 2>>>(
-          devDistAtRow.get(), devPrevAtRow.get(), devWorkplace.get(), devCostAtRow.get(), devLongWireOffsets.get(), devLongWireLengths.get());
-      sweepWireShared<<<numRows - (longWireEndRowsOffset / PACK_ROW_SIZE), PACK_ROW_SIZE / 2>>>(
-          devDistAtRow.get(), devPrevAtRow.get(), devCostAtRow.get(), longWireEndRowsOffset);
+      if (turn & 1)
+      {
+        sweepWireGlobal<<<numLongWires, PACK_ROW_SIZE / 2>>>(
+            devDistAtRow.get(), devAllPrevAtRow.get() + turn * numRows * PACK_ROW_SIZE,
+            devWorkplace.get(), devCostAtRow.get(), devLongWireOffsets.get(), devLongWireLengths.get());
+        sweepWireShared<<<numRows - (longWireEndRowsOffset / PACK_ROW_SIZE), PACK_ROW_SIZE / 2>>>(
+            devDistAtRow.get(), devAllPrevAtRow.get() + turn * numRows * PACK_ROW_SIZE, devCostAtRow.get(), longWireEndRowsOffset);
+      }
+      else
+      {
+        sweepVia<<<(numViasegs + 1023) / 1024, 1024>>>(
+            devDistAtRow.get(), devAllPrevAtRow.get() + turn * numRows * PACK_ROW_SIZE,
+            devCostAtViaseg.get(), devPosAtViaseg.get(), numViasegs);
+      }
     }
     tracePath<<<1, 1>>>(
-        devMarkAtRow.get(), devIsRoutedPin.get(), devRoutes.get(), devDistAtRow.get(), devPrevAtRow.get(),
-        devIdxAtRow.get(), devLocAtRow.get(), devPosAtViaseg.get(), devPinPositions.get(), numPins);
-    cleanDistPrev<<<(numRows * PACK_ROW_SIZE + 1023) / 1024, 1024>>>(devDistAtRow.get(), devPrevAtRow.get(), devMarkAtRow.get(), numRows);
+        devMarkAtRow.get(), devIsRoutedPin.get(), devRoutes.get(), devDistAtRow.get(), devAllPrevAtRow.get(),
+        devIdxAtRow.get(), devLocAtRow.get(), devPosAtViaseg.get(), devPinPositions.get(), numPins, numRows, numTurns);
+    cleanDist<<<(numRows * PACK_ROW_SIZE + 1023) / 1024, 1024>>>(devDistAtRow.get(), devMarkAtRow.get(), numRows);
   }
   checkCudaErrors(cudaDeviceSynchronize());
 }

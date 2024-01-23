@@ -50,18 +50,35 @@ set(PATH_CUGR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 ###############
 # Source Code #
 ###############
+file(GLOB_RECURSE CUGR_HEADER_FILES ${PATH_CUGR}/*.h ${PATH_CUGR}/*.hpp)
+file(GLOB_RECURSE CUGR_SOURCE_FILES ${PATH_CUGR}/*.c ${PATH_CUGR}/*.cpp)
 if(ENABLE_CUDA)
-  file(GLOB_RECURSE CUGR_HEADER_FILE ${PATH_CUGR}/*.h ${PATH_CUGR}/*.hpp ${PATH_CUGR}/*.cuh)
-  file(GLOB_RECURSE CUGR_SOURCE_FILES ${PATH_CUGR}/*.c ${PATH_CUGR}/*.cpp ${PATH_CUGR}/*.cu)
-else()
-  file(GLOB_RECURSE CUGR_HEADER_FILE ${PATH_CUGR}/*.h ${PATH_CUGR}/*.hpp)
-  file(GLOB_RECURSE CUGR_SOURCE_FILES ${PATH_CUGR}/*.c ${PATH_CUGR}/*.cpp)
+  set(CUGR_CUDA_HEADER_FILE
+    ${PATH_CUGR}/gamer/gamer_utils.cuh
+    ${PATH_CUGR}/gamer/GPUMazeRouter.cuh
+    ${PATH_CUGR}/gamer/BasicGamer.cuh
+    ${PATH_CUGR}/gamer/Grid2DExtractor.cuh
+    ${PATH_CUGR}/gamer/GridScaler2D.cuh
+    ${PATH_CUGR}/gamer/BasicGamer2D.cuh
+    ${PATH_CUGR}/gamer/GuidedGamer.cuh
+  )
+  set(CUGR_CUDA_SOURCE_FILE
+    ${PATH_CUGR}/gamer/GPUMazeRouter.cu
+    ${PATH_CUGR}/gr/GPUMazeRoute.cu
+    ${PATH_CUGR}/gamer/BasicGamer.cu
+    ${PATH_CUGR}/gamer/Grid2DExtractor.cu
+    ${PATH_CUGR}/gamer/GridScaler2D.cu
+    ${PATH_CUGR}/gamer/BasicGamer2D.cu
+    ${PATH_CUGR}/gamer/GuidedGamer.cu
+  )
+  list(APPEND CUGR_HEADER_FILES ${CUGR_CUDA_HEADER_FILE})
+  list(APPEND CUGR_SOURCE_FILES ${CUGR_CUDA_SOURCE_FILE})
 endif()
 
 ###########
 # Targets #
 ###########
-add_executable(route ${CUGR_SOURCE_FILES} ${CUGR_HEADER_FILE})
+add_executable(route ${CUGR_SOURCE_FILES} ${CUGR_HEADER_FILES})
 
 ##################
 # Subdirectories #

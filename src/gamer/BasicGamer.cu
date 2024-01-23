@@ -47,12 +47,22 @@ __global__ static void sweepWire(realT *dist, int *prev, const realT *costSum, i
   int *pL = (int *)(minR + max(lenX, lenY));
   int *pR = (int *)(pL + max(lenX, lenY));
 
+  // layer 0
+  if (blockIdx.x < ((0 & 1) ^ DIRECTION ? lenY : lenX))
+  {
+    int offset = 0 * N * N + blockIdx.x * N + ((0 & 1) ^ DIRECTION ? offsetY * N + offsetX : offsetX * N + offsetY);
+    int len = (0 & 1) ^ DIRECTION ? lenX : lenY;
+    for (int cur = threadIdx.x; cur < len; cur += blockDim.x)
+      prev[offset + cur] = offset + cur;
+  }
+  // layer 1+
   for (int i = 1; i < LAYER; i++)
   {
     if (blockIdx.x >= ((i & 1) ^ DIRECTION ? lenY : lenX))
       continue;
     int offset = i * N * N + blockIdx.x * N + ((i & 1) ^ DIRECTION ? offsetY * N + offsetX : offsetX * N + offsetY);
     int len = (i & 1) ^ DIRECTION ? lenX : lenY;
+
     for (int cur = threadIdx.x; cur < len; cur += blockDim.x)
     {
       minL[cur] = dist[offset + cur] - costSum[offset + cur];
@@ -88,17 +98,15 @@ __global__ static void sweepWire(realT *dist, int *prev, const realT *costSum, i
     }
     for (int cur = threadIdx.x; cur < len; cur += blockDim.x)
     {
-      realT val = minL[cur] + costSum[offset + cur];
-      int p = pL[cur];
       if (minL[cur] + costSum[offset + cur] > minR[len - 1 - cur] - costSum[offset + cur])
       {
-        val = minR[len - 1 - cur] - costSum[offset + cur];
-        p = pR[len - 1 - cur];
+        dist[offset + cur] = minR[len - 1 - cur] - costSum[offset + cur];
+        prev[offset + cur] = offset + pR[len - 1 - cur];
       }
-      if (val < dist[offset + cur] && cur != p)
+      else
       {
-        dist[offset + cur] = val;
-        prev[offset + cur] = offset + p;
+        dist[offset + cur] = minL[cur] + costSum[offset + cur];
+        prev[offset + cur] = offset + pL[cur];
       }
     }
     __syncthreads();
@@ -116,30 +124,35 @@ __global__ static void sweepVia(realT *dist, int *prev, const realT *viaCost, in
   y += offsetY;
 
   int p[MAX_NUM_LAYER];
+  realT d[MAX_NUM_LAYER], v[MAX_NUM_LAYER];
   for (int z = 0; z < LAYER; z++)
+  {
     p[z] = z;
+    d[z] = dist[xyzToIdx(x, y, z, DIRECTION, N)];
+    v[z] = viaCost[xyzToIdx(x, y, z, DIRECTION, N)];
+  }
   for (int z = 1; z < LAYER; z++)
   {
-    if (dist[xyzToIdx(x, y, z, DIRECTION, N)] > dist[xyzToIdx(x, y, z - 1, DIRECTION, N)] + viaCost[xyzToIdx(x, y, z, DIRECTION, N)])
+    if (d[z] > d[z - 1] + v[z])
     {
-      dist[xyzToIdx(x, y, z, DIRECTION, N)] = dist[xyzToIdx(x, y, z - 1, DIRECTION, N)] + viaCost[xyzToIdx(x, y, z, DIRECTION, N)];
+      d[z] = d[z - 1] + v[z];
       p[z] = p[z - 1];
     }
-    if (dist[xyzToIdx(x, y, LAYER - 1 - z, DIRECTION, N)] > dist[xyzToIdx(x, y, LAYER - z, DIRECTION, N)] + viaCost[xyzToIdx(x, y, LAYER - z, DIRECTION, N)])
+    if (d[LAYER - 1 - z] > d[LAYER - z] + v[LAYER - z])
     {
-      dist[xyzToIdx(x, y, LAYER - 1 - z, DIRECTION, N)] = dist[xyzToIdx(x, y, LAYER - z, DIRECTION, N)] + viaCost[xyzToIdx(x, y, LAYER - z, DIRECTION, N)];
+      d[LAYER - 1 - z] = d[LAYER - z] + v[LAYER - z];
       p[LAYER - 1 - z] = p[LAYER - z];
     }
   }
   for (int z = 0; z < LAYER; z++)
   {
-    if (p[z] != z)
-      prev[xyzToIdx(x, y, z, DIRECTION, N)] = xyzToIdx(x, y, p[z], DIRECTION, N);
+    dist[xyzToIdx(x, y, z, DIRECTION, N)] = d[z];
+    prev[xyzToIdx(x, y, z, DIRECTION, N)] = xyzToIdx(x, y, p[z], DIRECTION, N);
   }
 }
 
-__global__ static void cleanDistPrev(realT *dist, int *prev, const int *mark, int offsetX, int offsetY,
-                                     int lenX, int lenY, int DIRECTION, int N, int X, int Y, int LAYER)
+__global__ static void cleanDist(realT *dist, const int *mark, int offsetX, int offsetY,
+                                 int lenX, int lenY, int DIRECTION, int N, int X, int Y, int LAYER)
 {
   int x = blockIdx.x * blockDim.x + threadIdx.x;
   int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -150,7 +163,6 @@ __global__ static void cleanDistPrev(realT *dist, int *prev, const int *mark, in
   y += offsetY;
 
   int idx = xyzToIdx(x, y, z, DIRECTION, N);
-  prev[idx] = idx;
   dist[idx] = mark[idx] ? 0.f : INFINITY_DISTANCE;
 }
 
@@ -162,8 +174,8 @@ __global__ static void setRootPin(int *mark, int *isRoutedPin, const int *pinInd
   mark[pinIndices[0]] = 1;
 }
 
-// 回溯一条路径
-__global__ static void tracePath(int *mark, int *isRoutedPin, int *routes, const realT *dist, const int *prev, const int *pinIndices, int numPins, int DIRECTION, int N)
+__global__ static void tracePath(int *mark, int *isRoutedPin, int *routes, const realT *dist, const int *allPrev, const int *pinIndices,
+                                 int numPins, int numTurns, int DIRECTION, int N, int X, int Y, int LAYER)
 {
   realT minDist = INFINITY_DISTANCE;
   int pinId = -1, idx = -1;
@@ -188,34 +200,25 @@ __global__ static void tracePath(int *mark, int *isRoutedPin, int *routes, const
 
   // backtracing
   auto [x, y, z] = idxToXYZ(idx, DIRECTION, N);
-  while (!mark[idx])
+  for (int t = numTurns - 1; t >= 0; t--)
   {
-    int prevIdx = prev[idx];
+    int prevIdx = allPrev[t * LAYER * N * N + idx];
+    if (prevIdx == idx)
+      continue;
     auto [prevX, prevY, prevZ] = idxToXYZ(prevIdx, DIRECTION, N);
+    int startIdx = min(idx, prevIdx);
+    int endIdx = max(idx, prevIdx);
+    routes[++routes[0]] = startIdx;
+    routes[++routes[0]] = endIdx;
     if (z == prevZ) // wire
     {
-      int startIdx = min(idx, prevIdx);
-      int endIdx = max(idx, prevIdx);
-      routes[++routes[0]] = startIdx;
-      routes[++routes[0]] = endIdx;
       for (int tmpIdx = startIdx; tmpIdx <= endIdx; tmpIdx++)
-      {
-        if (tmpIdx != prevIdx)
-          mark[tmpIdx] = 1;
-      }
+        mark[tmpIdx] = 1;
     }
     else // via
     {
-      int startLayer = min(z, prevZ);
-      int endLayer = max(z, prevZ);
-      routes[++routes[0]] = min(idx, prevIdx);
-      routes[++routes[0]] = max(idx, prevIdx);
-      for (int l = startLayer; l <= endLayer; l++)
-      {
-        int tmpIdx = xyzToIdx(x, y, l, DIRECTION, N);
-        if (tmpIdx != prevIdx)
-          mark[tmpIdx] = 1;
-      }
+      for (int l = min(z, prevZ), le = max(z, prevZ); l <= le; l++)
+        mark[xyzToIdx(x, y, l, DIRECTION, N)] = 1;
     }
     idx = prevIdx;
     x = prevX;
@@ -233,7 +236,7 @@ BasicGamer::BasicGamer(int DIRECTION, int N, int X, int Y, int LAYER, int maxNum
 {
   devWireCostSum = cuda_make_unique<realT[]>(LAYER * N * N);
   devDist = cuda_make_unique<realT[]>(LAYER * N * N);
-  devPrev = cuda_make_unique<int[]>(LAYER * N * N);
+  devAllPrev = cuda_make_unique<int[]>(MAX_NUM_TURNS * LAYER * N * N);
   devMark = cuda_make_unique<int[]>(LAYER * N * N);
 
   devRoutes = cuda_make_shared<int[]>(maxNumPins * MAX_ROUTE_LEN_PER_PIN);
@@ -256,7 +259,7 @@ void BasicGamer::route(const std::vector<int> &pinIndices, int sweepTurns)
   route(pinIndices, sweepTurns, utils::BoxT<int>(0, 0, X, Y));
 }
 
-void BasicGamer::route(const std::vector<int> &pinIndices, int sweepTurns, const utils::BoxT<int> &box)
+void BasicGamer::route(const std::vector<int> &pinIndices, int numTurns, const utils::BoxT<int> &box)
 {
   int offsetX = box.lx();
   int offsetY = box.ly();
@@ -276,20 +279,24 @@ void BasicGamer::route(const std::vector<int> &pinIndices, int sweepTurns, const
       devWireCostSum.get(), devWireCost.get(), offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER);
   // maze routing
   setRootPin<<<1, 1>>>(devMark.get(), devIsRoutedPin.get(), devPinIndices.get(), numPins);
-  cleanDistPrev<<<dim3((lenX + 31) / 32, (lenY + 31) / 32, LAYER), dim3(32, 32, 1)>>>(
-      devDist.get(), devPrev.get(), devMark.get(), offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER);
+  cleanDist<<<dim3((lenX + 31) / 32, (lenY + 31) / 32, LAYER), dim3(32, 32, 1)>>>(
+      devDist.get(), devMark.get(), offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER);
   for (int iter = 1; iter < pinIndices.size(); iter++)
   {
-    for (int turn = 0; turn < sweepTurns; turn++)
+    for (int turn = 0; turn < numTurns; turn++)
     {
-      sweepVia<<<dim3((lenX + 31) / 32, (lenY + 31) / 32, 1), dim3(32, 32, 1)>>>(
-          devDist.get(), devPrev.get(), devViaCost.get(), offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER);
-      sweepWire<<<maxlen, std::min(1024, maxlen / 2), maxlen * (2 * sizeof(realT) + 2 * sizeof(int))>>>(
-          devDist.get(), devPrev.get(), devWireCostSum.get(), offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER);
+      if (turn & 1)
+        sweepWire<<<maxlen, std::min(1024, maxlen / 2), maxlen * (2 * sizeof(realT) + 2 * sizeof(int))>>>(
+            devDist.get(), devAllPrev.get() + turn * LAYER * N * N, devWireCostSum.get(), offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER);
+      else
+        sweepVia<<<dim3((lenX + 31) / 32, (lenY + 31) / 32, 1), dim3(32, 32, 1)>>>(
+            devDist.get(), devAllPrev.get() + turn * LAYER * N * N, devViaCost.get(), offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER);
     }
-    tracePath<<<1, 1>>>(devMark.get(), devIsRoutedPin.get(), devRoutes.get(), devDist.get(), devPrev.get(), devPinIndices.get(), numPins, DIRECTION, N);
-    cleanDistPrev<<<dim3((lenX + 31) / 32, (lenY + 31) / 32, LAYER), dim3(32, 32, 1)>>>(
-        devDist.get(), devPrev.get(), devMark.get(), offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER);
+    tracePath<<<1, 1>>>(
+        devMark.get(), devIsRoutedPin.get(), devRoutes.get(), devDist.get(), devAllPrev.get(), devPinIndices.get(),
+        numPins, numTurns, DIRECTION, N, X, Y, LAYER);
+    cleanDist<<<dim3((lenX + 31) / 32, (lenY + 31) / 32, LAYER), dim3(32, 32, 1)>>>(
+        devDist.get(), devMark.get(), offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER);
   }
   checkCudaErrors(cudaDeviceSynchronize());
 }

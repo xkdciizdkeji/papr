@@ -9,13 +9,13 @@ class BasicGamer
 public:
   BasicGamer(int DIRECTION, int N, int X, int Y, int LAYER, int maxNumPins);
 
-  void setWireCostMap(const cuda_shared_ptr<const realT[]> &wireCost) { devWireCost = wireCost; }
-  void setViaCostMap(const cuda_shared_ptr<const realT[]> &viaCost) { devViaCost = viaCost; }
-  cuda_shared_ptr<const int[]> getRoutes() const { return devRoutes; }
+  void setWireCost(const cuda_shared_ptr<realT[]> &wireCost) { devWireCost = wireCost; }
+  void setViaCost(const cuda_shared_ptr<realT[]> &viaCost) { devViaCost = viaCost; }
+  const cuda_shared_ptr<int[]> &getRoutes() const { return devRoutes; }
   bool getIsRouted() const;
 
-  void route(const std::vector<int> &pinIndices, int sweepTurns);
-  void route(const std::vector<int> &pinIndices, int sweepTurns, const utils::BoxT<int> &box);
+  void route(const std::vector<int> &pinIndices, int numTurns);
+  void route(const std::vector<int> &pinIndices, int numTurns, const utils::BoxT<int> &box);
 
 private:
   int DIRECTION, N, X, Y, LAYER;
@@ -27,11 +27,11 @@ private:
 
   cuda_unique_ptr<realT[]> devWireCostSum;
   cuda_unique_ptr<realT[]> devDist;
-  cuda_unique_ptr<int[]> devPrev;
+  cuda_unique_ptr<int[]> devAllPrev;
   cuda_unique_ptr<int[]> devMark;
 
-  cuda_shared_ptr<const realT[]> devWireCost;
-  cuda_shared_ptr<const realT[]> devViaCost;
+  cuda_shared_ptr<realT[]> devWireCost;
+  cuda_shared_ptr<realT[]> devViaCost;
 };
 
 #endif

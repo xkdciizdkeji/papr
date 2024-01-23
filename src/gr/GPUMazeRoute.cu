@@ -10,15 +10,18 @@ GPUMazeRoute::~GPUMazeRoute()
 {
 }
 
-void GPUMazeRoute::route(const std::vector<int> &netIndices, int sweepTurn, int margin)
+void GPUMazeRoute::run()
 {
-  router->route(netIndices, sweepTurn, margin);
-  // router->routeTwoStep(netIndices, 5, 8, 10);
-}
+  log() << "gamer info. routing ...\n";
+  std::vector<int> netIndices;
+  router->getOverflowNetIndices(netIndices);
+  // router->route(netIndices, 9, 20);
+  router->routeTwoStep(netIndices, 4, 9, 20);
+  log() << "gamer info. routing done\n";
 
-void GPUMazeRoute::apply(const std::vector<int> &netIndices)
-{
-  router->apply(netIndices);
+  log() << "gamer info. commiting gamer's result ...\n";
+  router->applyToCpu(netIndices);
+  log() << "gamer info. commiting done\n";
 }
 
 void GPUMazeRoute::getOverflowNetIndices(std::vector<int> &netIndices) const

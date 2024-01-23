@@ -18,7 +18,9 @@ constexpr int PACK_ROW_SIZE = 1024;
 constexpr int MAX_NUM_LAYER = 10;
 constexpr int VIA_SEG_SIZE = MAX_NUM_LAYER;
 constexpr realT INFINITY_DISTANCE = std::numeric_limits<realT>::infinity();
-constexpr int MAX_ROUTE_LEN_PER_PIN = 200;
+constexpr int MAX_ROUTE_LEN_PER_PIN = 30;
+constexpr int MAX_NUM_TURNS = 10;
+constexpr int MAX_SCALE = 10;
 
 // -------------------------------
 // Cuda smart ptr
@@ -107,12 +109,6 @@ inline __device__ double myAtomicAdd(double *address, double val)
   } while (assumed != old);
   return __longlong_as_double(old);
 }
-
-// -----------------------------------
-// GR Tree
-// -----------------------------------
-
-std::shared_ptr<GRTreeNode> extractGRTree(const int *routes, int rootIdx, int DIRECTION, int N);
 
 #endif
 #endif

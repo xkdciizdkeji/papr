@@ -9,15 +9,15 @@ class GuidedGamer
 public:
   GuidedGamer(int DIRECTION, int N, int X, int Y, int LAYER, int maxNumPins);
 
-  void setWireCostMap(const cuda_shared_ptr<const realT[]> &wireCost) { devWireCost = wireCost; }
-  void setViaCostMap(const cuda_shared_ptr<const realT[]> &viaCost) { devViaCost = viaCost; }
-  cuda_shared_ptr<const int[]> getRoutes() const { return devRoutes; }
+  void setWireCost(const cuda_shared_ptr<realT[]> &wireCost) { devWireCost = wireCost; }
+  void setViaCost(const cuda_shared_ptr<realT[]> &viaCost) { devViaCost = viaCost; }
+  const cuda_shared_ptr<int[]> &getRoutes() const { return devRoutes; }
   bool getIsRouted() const;
 
-  void setGuide(const int *routes, int scaleX, int scaleY, int coarseN);
+  void setGuide2D(const std::vector<utils::BoxT<int>> &guide2D);
   void reserve(int nWires, int nRows, int nLongWires, int nWorkplace, int nViasegs);
 
-  void route(const std::vector<int> &pinIndices, int sweepTurns);
+  void route(const std::vector<int> &pinIndices, int numTurns);
 
 private:
   int DIRECTION, N, X, Y, LAYER;
@@ -46,7 +46,7 @@ private:
   cuda_unique_ptr<int[]> devLocAtRow;
   cuda_unique_ptr<realT[]> devCostAtRow;
   cuda_unique_ptr<realT[]> devDistAtRow;
-  cuda_unique_ptr<int[]> devPrevAtRow;
+  cuda_unique_ptr<int[]> devAllPrevAtRow;
   cuda_unique_ptr<int[]> devMarkAtRow;
 
   // via segment
@@ -59,8 +59,8 @@ private:
   cuda_unique_ptr<char[]> devWorkplace;
 
   // original cost
-  cuda_shared_ptr<const realT[]> devWireCost;
-  cuda_shared_ptr<const realT[]> devViaCost;
+  cuda_shared_ptr<realT[]> devWireCost;
+  cuda_shared_ptr<realT[]> devViaCost;
 };
 
 #endif
