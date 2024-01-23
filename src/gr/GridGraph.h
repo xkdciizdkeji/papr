@@ -63,6 +63,21 @@ public:
     // For visualization
     void write(const std::string heatmap_file="heatmap.txt") const;
     
+    void clear(){ 
+        totalLength = 0; 
+        totalNumVias = 0; 
+        for (int layerIdx = 0; layerIdx < nLayers; layerIdx++)
+        {
+            constexpr unsigned int xBlock = 32;
+            constexpr unsigned int yBlock = 32;
+            for (int x = 0; x < xSize; x += xBlock)
+                for (int y = 0; y < ySize; y += yBlock)
+                    for (int xx = x; xx < std::min(xSize, x + xBlock); xx++)
+                        for (int yy = y; yy < std::min(ySize, y + yBlock); yy++)
+                            graphEdges[layerIdx][xx][yy].demand = 0;
+        }
+    };
+    
 private:
     const Parameters& parameters;
     
