@@ -283,25 +283,11 @@ void GlobalRouter::route()
 #else
     if (netIndices.size() > 0)
     {
-        std::vector<bool> isGamerRoutedNet(nets.size(), false);
         log() << "stage 3: gpu maze routing\n";
-        GPUMazeRoute gamer(nets, gridGraph, parameters);
-        log() << "gamer init. overflow net: " << netIndices.size() << "/" << nets.size() << "\n";
-        for (int iter = 1; iter <= 3 && netIndices.size() > 0; iter++)
-        {
-            gamer.route(netIndices, 3 + iter, 10 * iter);
-            for (auto netId : netIndices)
-                isGamerRoutedNet[netId] = true;
-            gamer.getOverflowNetIndices(netIndices);
-            log() << "gamer iter " << iter << " overflow net: " << netIndices.size() << "/" << nets.size() << "\n";
-        }
-        netIndices.clear();
-        for (int netId = 0; netId < nets.size(); netId++)
-            if (isGamerRoutedNet[netId])
-                netIndices.push_back(netId);
-        log() << "commiting gamer's result ...\n";
-        gamer.commit(netIndices);
-        log() << "commiting done\n";
+        GPUMazeRoute mazeRoute(nets, gridGraph, parameters);
+        mazeRoute.run();
+        mazeRoute.getOverflowNetIndices(netIndices);
+        log() << netIndices.size() << " / " << nets.size() << " nets have overflows." << std::endl;
     }
 #endif
     t3 = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t).count();

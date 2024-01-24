@@ -569,10 +569,6 @@ void PatternRoute::calculateRoutingCosts(std::shared_ptr<PatternRoutingNode>& no
             std::shared_ptr<PatternRoutingNode>& path = childPaths[pathIndex];
             calculateRoutingCosts(path);
             unsigned direction = node->x == path->x ? MetalLayer::V : MetalLayer::H;
-            // std::cout<<direction<<std::endl;
-            // std::cout<<(*node)[0]<<" "<<(*path)[0]<<std::endl;
-            // std::cout<<(*node)[1]<<" "<<(*path)[1]<<std::endl;
-            //std::cin.get();
             assert((*node)[1 - direction] == (*path)[1 - direction]);
             for (int layerIndex = parameters.min_routing_layer; layerIndex < gridGraph.getNumLayers(); layerIndex++) {
                 if (gridGraph.getLayerDirection(layerIndex) != direction) continue;
