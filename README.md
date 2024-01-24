@@ -32,7 +32,7 @@ $ cmake --build build
 **Step 3:** use the executable file
 ```bash
 $ cd ./build/
-$ ./route -cap [path_to_cap_file] -net [path_to_net_file] -output [path_to_output_file]
+$ ./route -cap [path_to_cap_file] -net [path_to_net_file] -output [path_to_output_file] -threads [num_of_threads] 
 ```
 ## 2. Dependencies
 

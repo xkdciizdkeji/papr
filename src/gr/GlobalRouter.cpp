@@ -11,7 +11,7 @@
 #include <fstream>
 #include <mutex>
 #include <thread>
-#include "../multithread/tp.cpp"
+// #include "../multithread/tp.cpp"
 // #include <boost/asio/static_thread_pool.hpp>
 // #include <boost/asio.hpp>
 
@@ -38,8 +38,8 @@ void GlobalRouter::route()
 
     auto t = std::chrono::high_resolution_clock::now();
 
-    std::ofstream  afile;
-    afile.open("time", std::ios::app);
+    // std::ofstream  afile;
+    // afile.open("time", std::ios::app);
 
     vector<int> netIndices;
     vector<int> netOverflows(nets.size());
@@ -174,7 +174,7 @@ void GlobalRouter::route()
 
     log() << netIndices.size() << " / " << nets.size() << " nets have overflows." << std::endl;
     logeol();
-    afile<<netIndices.size()<<" ";
+    // afile<<netIndices.size()<<" ";
     // printStatistics();
     t1 = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t).count();
     t = std::chrono::high_resolution_clock::now();
@@ -222,7 +222,7 @@ void GlobalRouter::route()
         }
         log() << netIndices.size() << " / " << nets.size() << " nets have overflows." << std::endl;
         logeol();
-        afile<<netIndices.size()<<" ";
+        // afile<<netIndices.size()<<" ";
     }
     // printStatistics();
     t2 = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t).count();
@@ -278,7 +278,7 @@ void GlobalRouter::route()
         }
         log() << netIndices.size() << " / " << nets.size() << " nets have overflows." << std::endl;
         logeol();
-        afile<<netIndices.size()<<" ";
+        // afile<<netIndices.size()<<" ";
     }
 #else
     if (netIndices.size() > 0)
@@ -298,9 +298,9 @@ void GlobalRouter::route()
           << std::setprecision(3) << std::fixed << t1 << " s, "
           << std::setprecision(3) << std::fixed << t2 << " s, "
           << std::setprecision(3) << std::fixed << t3 << " s\n";
-    afile<<t_batch<<" "<<t_cst<<" "<<t_pr<<" ";
-    afile<<t1<<" "<<t2<<" "<<t3<<" ";
-    afile.close();
+    // afile<<t_batch<<" "<<t_cst<<" "<<t_pr<<" ";
+    // afile<<t1<<" "<<t2<<" "<<t3<<" ";
+    // afile.close();
     printStatistics();
     if (parameters.write_heatmap)
         gridGraph.write();
@@ -654,10 +654,10 @@ void GlobalRouter::printStatistics() const
     log() << "via cost:                 " << viaCost << std::endl;
     log() << "overflow cost:            " << overflowCost << std::endl;
     log() << "total cost(ispd24 score): " << totalCost << std::endl;
-    std::ofstream  afile;
-    afile.open("time", std::ios::app);
-    afile<<wireCost<<" "<<viaCost<<" "<<overflowCost<<" "<<totalCost<<"\n";
-    afile.close();
+    // std::ofstream  afile;
+    // afile.open("time", std::ios::app);
+    // afile<<wireCost<<" "<<viaCost<<" "<<overflowCost<<" "<<totalCost<<"\n";
+    // afile.close();
     logeol();
 }
 
