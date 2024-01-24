@@ -94,10 +94,10 @@ void GlobalRouter::route()
     auto t_pr_b = std::chrono::high_resolution_clock::now();
     for (const vector<int>& batch : batches) {
         runJobsMT(batch.size(),numofThreads, [&](int jobIdx) {
-            auto patternRoute = PatternRoutes.find(batch[jobIdx])->second;
+            auto patternRoute = PatternRoutes.find(netIndices[batch[jobIdx]])->second;
             patternRoute.constructRoutingDAG();
             patternRoute.run();
-            gridGraph.commitTree(nets[batch[jobIdx]].getRoutingTree());
+            gridGraph.commitTree(nets[netIndices[batch[jobIdx]]].getRoutingTree());
         });
     }
     gridGraph.clear();
