@@ -82,12 +82,21 @@ void GlobalRouter::route()
     //std::vector<PatternRoute*> PatternRoutes;
     auto t_cst_b = std::chrono::high_resolution_clock::now();
     std::unordered_map<int,PatternRoute> PatternRoutes;
+    // for output SteinerTree.txt
+    // std::ofstream cfile;
+    // cfile.open("SteinerTree.txt", std::ios::app);
+    // cfile << "[";
     for (const int netIndex : netIndices) {
         PatternRoute patternRoute(nets[netIndex], gridGraph, parameters);
         patternRoute.constructSteinerTree();
+        // if(SteinerTreeNode::getPythonString(patternRoute.getSteinerTree())!="[]"){
+        //     cfile <<SteinerTreeNode::getPythonString(patternRoute.getSteinerTree())<<","<<"\n";
+        // }
         // patternRoute.constructRoutingDAG();
         PatternRoutes.insert(std::make_pair(netIndex,patternRoute));
     }
+    // cfile << "]";
+    // cfile.close();
     double t_cst = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t_cst_b).count();
 
     
@@ -100,11 +109,11 @@ void GlobalRouter::route()
             gridGraph.commitTree(nets[netIndices[batch[jobIdx]]].getRoutingTree());
         });
     }
-    gridGraph.clear();
-    for (auto net:nets)
-    {
-        gridGraph.commitTree(net.getRoutingTree());
-    }
+    // gridGraph.clear();
+    // for (auto net:nets)
+    // {
+    //     gridGraph.commitTree(net.getRoutingTree());
+    // }
     // for (auto batch:batches)
     // {
     //     int z = batch.size() / numofThreads;
@@ -208,6 +217,55 @@ void GlobalRouter::route()
             patternRoute.run();
             gridGraph.commitTree(net.getRoutingTree());
         }
+
+        // routers.clear();
+        // batches.clear();
+        // PatternRoutes.clear();
+        // routers.reserve(netIndices.size());
+        // for (auto id : netIndices)
+        //     routers.emplace_back(nets[id]);
+        // batches = getBatches(routers, netIndices);
+
+        // for (const int netIndex : netIndices)
+        // {
+        //     PatternRoute patternRoute(nets[netIndex], gridGraph, parameters);
+        //     patternRoute.constructSteinerTree();
+        //     patternRoute.constructRoutingDAG();
+        //     patternRoute.constructDetours(congestionView); // KEY DIFFERENCE compared to stage 1
+        //     PatternRoutes.insert(std::make_pair(netIndex, patternRoute));
+        // }
+
+        // std::ofstream outputFile("batches.txt");
+        // if (outputFile.is_open())
+        // {
+        //     for (const auto &batch : batches)
+        //     {
+        //         for (const auto &value : batch)
+        //         {
+        //             outputFile << value << " ";
+        //         }
+        //         outputFile << std::endl;
+        //     }
+        //     outputFile.close();
+        // }
+        // else
+        // {
+        //     // Failed to open the file
+        //     // Handle the error accordingly
+        // }
+        // for (const vector<int> &batch : batches)
+        // {
+        //     runJobsMT(batch.size(), numofThreads, [&](int jobIdx)
+        //               {
+        //     auto patternRoute = PatternRoutes.find(netIndices[batch[jobIdx]])->second;
+        //     patternRoute.run();
+        //     gridGraph.commitTree(nets[netIndices[batch[jobIdx]]].getRoutingTree()); });
+        // }
+        // gridGraph.clear();
+        // for (auto net : nets)
+        // {
+        //     gridGraph.commitTree(net.getRoutingTree());
+        // }
 
         netIndices.clear();
         for (const auto &net : nets)
@@ -740,11 +798,13 @@ vector<vector<int>> GlobalRouter::getBatches(vector<SingleNetRouter>& routers, c
         return batches;
     }
     
+    // for (int i = 0; i < netsToRoute.size(); i++) batch[i] = netsToRoute[i];
     for (int i = 0; i < netsToRoute.size(); i++) batch[i] = i;
 
     runJobsMT(batch.size(), numofThreads, [&](int jobIdx) {
         auto& router = routers[batch[jobIdx]];
         const auto mergedPinAccessBoxes = nets[netsToRoute[jobIdx]].getPinAccessPoints();
+        // const auto mergedPinAccessBoxes = nets[batch[jobIdx]].getPinAccessPoints();
         utils::IntervalT<long int> xIntvl, yIntvl;
         for (auto& points : mergedPinAccessBoxes) {
             for (auto& point : points) {
