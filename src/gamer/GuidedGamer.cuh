@@ -9,8 +9,9 @@ class GuidedGamer
 public:
   GuidedGamer(int DIRECTION, int N, int X, int Y, int LAYER, int maxNumPins);
 
-  void setWireCost(const cuda_shared_ptr<realT[]> &wireCost) { devWireCost = wireCost; }
-  void setViaCost(const cuda_shared_ptr<realT[]> &viaCost) { devViaCost = viaCost; }
+  void setWireCost(const cuda_shared_ptr<realT[]> &cost) { devWireCost = cost; }
+  void setNonStackViaCost(const cuda_shared_ptr<realT[]> &cost) { devNonStackViaCost = cost; }
+  void setUnitViaCost(realT cost) { unitViaCost = cost; }
   const cuda_shared_ptr<int[]> &getRoutes() const { return devRoutes; }
   bool getIsRouted() const;
 
@@ -60,7 +61,8 @@ private:
 
   // original cost
   cuda_shared_ptr<realT[]> devWireCost;
-  cuda_shared_ptr<realT[]> devViaCost;
+  cuda_shared_ptr<realT[]> devNonStackViaCost;
+  realT unitViaCost;
 };
 
 #endif

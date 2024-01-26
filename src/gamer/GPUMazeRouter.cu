@@ -7,57 +7,121 @@
 // Cuda kernel
 // ----------------------------
 
-__global__ static void commitRoutes(realT *demand, const int *allRoutes, const int *allRoutesOffset, const int *netIndices,
-                                    int reverse, int numNets, int DIRECTION, int N, int X, int Y, int LAYER)
+// __global__ static void commitRoutes(realT *demand, const int *allRoutes, const int *allRoutesOffset, const int *netIndices,
+//                                     int reverse, int numNets, int DIRECTION, int N, int X, int Y, int LAYER)
+// {
+//   int tid = blockIdx.x * blockDim.x + threadIdx.x;
+//   if (tid >= numNets)
+//     return;
+//   const int *routes = allRoutes + allRoutesOffset[netIndices[tid]];
+//   for (int i = 0; i < routes[0]; i += 2)
+//   {
+//     int startIdx = routes[1 + i];
+//     int endIdx = routes[2 + i];
+//     auto [startX, startY, startZ] = idxToXYZ(startIdx, DIRECTION, N);
+//     auto [endX, endY, endZ] = idxToXYZ(endIdx, DIRECTION, N);
+//     if (startZ == endZ) // wire
+//     {
+//       for (int idx = startIdx + 1; idx <= endIdx; idx++)
+//       {
+// #if __CUDA_ARCH__ >= 600
+//         atomicAdd(demand + idx, reverse ? static_cast<realT>(-1) : static_cast<realT>(1));
+// #else
+//         myAtomicAdd(demand + idx, reverse ? static_cast<realT>(-1.f) : static_cast<realT>(1.f));
+// #endif
+//       }
+//     }
+//     else // vias
+//     {
+//       for (int z = startZ + 1, x = startX, y = startY; z <= endZ - 1; z++)
+//       {
+//         int idx = xyzToIdx(x, y, z, DIRECTION, N);
+// #if __CUDA_ARCH__ >= 600
+//         if ((z & 1) ^ DIRECTION ? (x == 0) : (y == 0))
+//           atomicAdd(demand + idx + 1, reverse ? static_cast<realT>(-1.f) : static_cast<realT>(1.f));
+//         else if ((z & 1) ^ DIRECTION ? (x == X - 1) : (y == Y - 1))
+//           atomicAdd(demand + idx, reverse ? static_cast<realT>(-1.f) : static_cast<realT>(1.f));
+//         else
+//         {
+//           atomicAdd(demand + idx, reverse ? static_cast<realT>(-.5f) : static_cast<realT>(.5f));
+//           atomicAdd(demand + idx + 1, reverse ? static_cast<realT>(-.5f) : static_cast<realT>(.5f));
+//         }
+// #else
+//         if ((z & 1) ^ DIRECTION ? (x == 0) : (y == 0))
+//           myAtomicAdd(demand + idx + 1, reverse ? static_cast<realT>(-1.f) : static_cast<realT>(1.f));
+//         else if ((z & 1) ^ DIRECTION ? (x == X - 1) : (y == Y - 1))
+//           myAtomicAdd(demand + idx, reverse ? static_cast<realT>(-1.f) : static_cast<realT>(1.f));
+//         else
+//         {
+//           myAtomicAdd(demand + idx, reverse ? static_cast<realT>(-.5f) : static_cast<realT>(.5f));
+//           myAtomicAdd(demand + idx + 1, reverse ? static_cast<realT>(-.5f) : static_cast<realT>(.5f));
+//         }
+// #endif
+//       }
+//     }
+//   }
+// }
+
+__global__ static void commitRoutes(realT *demand, int *flag, const int *routes,
+                                    int reverse, int DIRECTION, int N, int X, int Y, int LAYER)
 {
-  int tid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (tid >= numNets)
-    return;
-  const int *routes = allRoutes + allRoutesOffset[netIndices[tid]];
   for (int i = 0; i < routes[0]; i += 2)
   {
     int startIdx = routes[1 + i];
     int endIdx = routes[2 + i];
     auto [startX, startY, startZ] = idxToXYZ(startIdx, DIRECTION, N);
     auto [endX, endY, endZ] = idxToXYZ(endIdx, DIRECTION, N);
-    if (startZ == endZ) // wire
+    if (startZ == endZ)
     {
-      for (int idx = startIdx + 1; idx <= endIdx; idx++)
+      for (int idx = startIdx; idx <= endIdx; idx++)
+        flag[idx] = 0;
+    }
+    else
+    {
+      for (int z = startZ; z <= endZ; z++)
+        flag[xyzToIdx(startX, startY, z, DIRECTION, N)] = 0;
+    }
+  }
+  for (int i = 0; i < routes[0]; i += 2)
+  {
+    int startIdx = routes[1 + i];
+    int endIdx = routes[2 + i];
+    auto [startX, startY, startZ] = idxToXYZ(startIdx, DIRECTION, N);
+    auto [endX, endY, endZ] = idxToXYZ(endIdx, DIRECTION, N);
+    if (startZ == endZ)
+    {
+      for (int idx = startIdx; idx <= endIdx; idx++)
       {
-#if __CUDA_ARCH__ >= 600
-        atomicAdd(demand + idx, reverse ? static_cast<realT>(-1) : static_cast<realT>(1));
-#else
-        myAtomicAdd(demand + idx, reverse ? static_cast<realT>(-1.f) : static_cast<realT>(1.f));
-#endif
+        flag[idx] = 1;
+        if (idx > startIdx)
+          demand[idx] += reverse ? -1.f : 1.f;
       }
     }
-    else // vias
+  }
+  for (int i = 0; i < routes[0]; i += 2)
+  {
+    int startIdx = routes[1 + i];
+    int endIdx = routes[2 + i];
+    auto [startX, startY, startZ] = idxToXYZ(startIdx, DIRECTION, N);
+    auto [endX, endY, endZ] = idxToXYZ(endIdx, DIRECTION, N);
+    if (startZ != endZ)
     {
-      for (int z = startZ, x = startX, y = startY; z <= endZ; z++)
+      for (int z = startZ, x = startX, y = startY; z < endZ; z++)
       {
-        int idx = xyzToIdx(x, y, z, DIRECTION, N);
-        realT vd = (z == startZ || z == endZ) ? 1.f : 2.f;
-#if __CUDA_ARCH__ >= 600
-        if ((z & 1) ^ DIRECTION ? (x == 0) : (y == 0))
-          atomicAdd(demand + idx + 1, reverse ? static_cast<realT>(-vd) : static_cast<realT>(vd));
-        else if ((z & 1) ^ DIRECTION ? (x == X - 1) : (y == Y - 1))
-          atomicAdd(demand + idx, reverse ? static_cast<realT>(-vd) : static_cast<realT>(vd));
-        else
+        int idx = xyzToIdx(startX, startY, z, DIRECTION, N);
+        if (!flag[idx])
         {
-          atomicAdd(demand + idx, reverse ? static_cast<realT>(-0.5f * vd) : static_cast<realT>(0.5f * vd));
-          atomicAdd(demand + idx + 1, reverse ? static_cast<realT>(-0.5f * vd) : static_cast<realT>(0.5f * vd));
+          flag[idx] = 1;
+          if ((z & 1) ^ DIRECTION ? (x == 0) : (y == 0))
+            demand[idx + 1] += reverse ? -1.f : 1.f;
+          else if ((z & 1) ^ DIRECTION ? (x == X - 1) : (y == Y - 1))
+            demand[idx] += reverse ? -1.f : 1.f;
+          else
+          {
+            demand[idx] += reverse ? -.5f : .5f;
+            demand[idx + 1] += reverse ? -.5f : .5f;
+          }
         }
-#else
-        if ((z & 1) ^ DIRECTION ? (x == 0) : (y == 0))
-          myAtomicAdd(demand + idx + 1, reverse ? static_cast<realT>(-vd) : static_cast<realT>(vd));
-        else if ((z & 1) ^ DIRECTION ? (x == X - 1) : (y == Y - 1))
-          myAtomicAdd(demand + idx, reverse ? static_cast<realT>(-vd) : static_cast<realT>(vd));
-        else
-        {
-          myAtomicAdd(demand + idx, reverse ? static_cast<realT>(-0.5f * vd) : static_cast<realT>(0.5f * vd));
-          myAtomicAdd(demand + idx + 1, reverse ? static_cast<realT>(-0.5f * vd) : static_cast<realT>(0.5f * vd));
-        }
-#endif
       }
     }
   }
@@ -92,9 +156,9 @@ __global__ static void markOverflowNet(int *isOverflowNet, const realT *demand, 
   }
 }
 
-__global__ static void calculateWireViaCost(realT *wireCost, realT *viaCost, const realT *demand, const realT *capacity,
-                                            const realT *hEdgeLengths, const realT *vEdgeLengths, const realT *layerMinLengths, const realT *unitLengthShortCosts,
-                                            realT unitLengthWireCost, realT unitViaCost, realT logisticSlope, realT viaMultiplier,
+__global__ static void calculateWireViaCost(realT *wireCost, realT *nonStackViaCost, const realT *demand, const realT *capacity,
+                                            const realT *hEdgeLengths, const realT *vEdgeLengths,
+                                            const realT *unitOverflowCosts, realT unitLengthWireCost, realT unitViaCost,
                                             int offsetX, int offsetY, int lenX, int lenY, int DIRECTION, int N, int X, int Y, int LAYER)
 {
   int x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -108,35 +172,27 @@ __global__ static void calculateWireViaCost(realT *wireCost, realT *viaCost, con
 
   // wire cost
   realT edgeLength = ((z & 1) ^ DIRECTION) ? (x > 0 ? hEdgeLengths[x] : 0.f) : (y > 0 ? vEdgeLengths[y] : 0.f);
-  realT logisticFactor = capacity[idx] < 1.f ? 1.f : logistic(capacity[idx] - demand[idx], logisticSlope);
-  wireCost[idx] = edgeLength * (unitLengthWireCost + unitLengthShortCosts[z] * logisticFactor);
+  realT slope = capacity[idx] > 0.f ? 0.5f : 1.5f;
+  wireCost[idx] = edgeLength * unitLengthWireCost + unitOverflowCosts[z] * exp(slope * (demand[idx] - capacity[idx])) * (exp(slope) - 1);
 
   // via cost
-  realT vc = 0.f;
-  if (z >= 1)
+  if ((z & 1) ^ DIRECTION ? (x == 0) : (y == 0))
   {
-    vc += unitViaCost;
-#pragma unroll
-    for (int l = z - 1; l <= z; l++)
-    {
-      int leftIdx = xyzToIdx(x, y, l, DIRECTION, N);
-      int rightIdx = leftIdx + 1;
-      realT leftEdgeLength = ((l & 1) ^ DIRECTION) ? (x > 0 ? hEdgeLengths[x] : 0.f) : (y > 0 ? vEdgeLengths[y] : 0.f);
-      realT rightEdgeLength = ((l & 1) ^ DIRECTION) ? (x < X - 1 ? hEdgeLengths[x + 1] : 0.f) : (y < Y - 1 ? vEdgeLengths[y + 1] : 0.f);
-      realT vd = layerMinLengths[l] / (leftEdgeLength + rightEdgeLength) * viaMultiplier;
-      if (leftEdgeLength > 0.f)
-      {
-        realT leftLogisticFactor = capacity[leftIdx] < 1.f ? 1.f : logistic(capacity[leftIdx] - demand[leftIdx], logisticSlope);
-        vc += vd * leftEdgeLength * (unitLengthWireCost + unitLengthShortCosts[l] * leftLogisticFactor);
-      }
-      if (rightEdgeLength > 0.f)
-      {
-        realT rightLogisticFactor = capacity[rightIdx] < 1.f ? 1.f : logistic(capacity[rightIdx] - demand[rightIdx], logisticSlope);
-        vc += vd * rightEdgeLength * (unitLengthWireCost + unitLengthShortCosts[l] * rightLogisticFactor);
-      }
-    }
+    realT rs = capacity[idx + 1] > 0.f ? 0.5f : 1.5f;
+    nonStackViaCost[idx] = unitOverflowCosts[z] * exp(rs * (demand[idx + 1] - capacity[idx + 1])) * (exp(rs) - 1);
   }
-  viaCost[idx] = vc;
+  else if ((z & 1) ^ DIRECTION ? (x == X - 1) : (y == Y - 1))
+  {
+    realT ls = capacity[idx] > 0.f ? 0.5f : 1.5f;
+    nonStackViaCost[idx] = unitOverflowCosts[z] * exp(ls * (demand[idx] - capacity[idx])) * (exp(ls) - 1);
+  }
+  else
+  {
+    realT ls = capacity[idx] > 0.f ? 0.5f : 1.5f;
+    realT rs = capacity[idx + 1] > 0.f ? 0.5f : 1.5f;
+    nonStackViaCost[idx] = unitOverflowCosts[z] * exp(ls * (demand[idx] - capacity[idx])) * (exp(ls * 0.5f) - 1) +
+                           unitOverflowCosts[z] * exp(rs * (demand[idx + 1] - capacity[idx + 1])) * (exp(rs * 0.5f) - 1);
+  }
 }
 
 // ----------------------------------
@@ -159,8 +215,6 @@ GPUMazeRouter::GPUMazeRouter(std::vector<GRNet> &nets, GridGraph &graph, const P
 
   unitLengthWireCost = gridGraph.getUnitLengthWireCost();
   unitViaCost = gridGraph.getUnitViaCost();
-  logisticSlope = parameters.maze_logistic_slope;
-  viaMultiplier = parameters.via_multiplier;
 
   // 初始化hEdgeLengths, vEdgeLengths内存显存
   std::vector<realT> hEdgeLengths(X);
@@ -175,24 +229,19 @@ GPUMazeRouter::GPUMazeRouter(std::vector<GRNet> &nets, GridGraph &graph, const P
   checkCudaErrors(cudaMemcpy(devHEdgeLengths.get(), hEdgeLengths.data(), X * sizeof(realT), cudaMemcpyHostToDevice));
   checkCudaErrors(cudaMemcpy(devVEdgeLengths.get(), vEdgeLengths.data(), Y * sizeof(realT), cudaMemcpyHostToDevice));
 
-  // 初始化layerMinLengths, unitLengthShortCosts内存显存
-  std::vector<realT> layerMinLengths(LAYER);
-  std::vector<realT> unitLengthShortCosts(LAYER);
+  // 初始化unitOverflowCosts内存显存
+  std::vector<realT> unitOverflowCosts(LAYER);
   for (int l = 0; l < LAYER; l++)
-  {
-    layerMinLengths[l] = gridGraph.getLayerMinLength(l);
-    unitLengthShortCosts[l] = gridGraph.getUnitLengthShortCost(l);
-  }
-  devLayerMinLengths = cuda_make_unique<realT[]>(LAYER);
-  devUnitLengthShortCosts = cuda_make_unique<realT[]>(LAYER);
-  checkCudaErrors(cudaMemcpy(devLayerMinLengths.get(), layerMinLengths.data(), LAYER * sizeof(realT), cudaMemcpyHostToDevice));
-  checkCudaErrors(cudaMemcpy(devUnitLengthShortCosts.get(), unitLengthShortCosts.data(), LAYER * sizeof(realT), cudaMemcpyHostToDevice));
+    unitOverflowCosts[l] = gridGraph.getUnitOverflowCost(l);
+  devUnitOverflowCosts = cuda_make_unique<realT[]>(LAYER);
+  checkCudaErrors(cudaMemcpy(devUnitOverflowCosts.get(), unitOverflowCosts.data(), LAYER * sizeof(realT), cudaMemcpyHostToDevice));
 
-  // 初始化capacity, demand, wireCost, viaCost显存
+  // 初始化flag, capacity, demand, wireCost, viaCost显存
+  devFlag = cuda_make_unique<int[]>(LAYER * N * N);
   devCapacity = cuda_make_unique<realT[]>(LAYER * N * N);
   devDemand = cuda_make_unique<realT[]>(LAYER * N * N);
   devWireCost = cuda_make_shared<realT[]>(LAYER * N * N);
-  devViaCost = cuda_make_shared<realT[]>(LAYER * N * N);
+  devNonStackViaCost = cuda_make_shared<realT[]>(LAYER * N * N);
   std::vector<realT> capacity(LAYER * N * N);
   std::vector<realT> demand(LAYER * N * N);
   for (int z = 0; z < LAYER; z++)
@@ -232,7 +281,6 @@ GPUMazeRouter::GPUMazeRouter(std::vector<GRNet> &nets, GridGraph &graph, const P
                  { return net.getRoutingTree() != nullptr; });
   isOverflowNet.resize(nets.size(), 0);
   devIsOverflowNet = cuda_make_unique<int[]>(nets.size());
-  devNetIndices = cuda_make_unique<int[]>(nets.size());
 
   // 初始化allRoutes, allRoutesOffset显存内存
   allRoutesOffset.resize(nets.size() + 1, 0);
@@ -262,15 +310,11 @@ GPUMazeRouter::GPUMazeRouter(std::vector<GRNet> &nets, GridGraph &graph, const P
   checkCudaErrors(cudaMemcpy(devAllRoutesOffset.get(), allRoutesOffset.data(), allRoutesOffset.size() * sizeof(int), cudaMemcpyHostToDevice));
   checkCudaErrors(cudaMemcpy(devAllRoutes.get(), allRoutes.data(), allRoutes.size() * sizeof(int), cudaMemcpyHostToDevice));
 
-  // 标记overflow net
-  markOverflowNet<<<(nets.size() + 1023) / 1024, 1024>>>(
-      devIsOverflowNet.get(), devDemand.get(), devCapacity.get(), devAllRoutes.get(), devAllRoutesOffset.get(), nets.size(), DIRECTION, N);
-  checkCudaErrors(cudaMemcpy(isOverflowNet.data(), devIsOverflowNet.get(), nets.size() * sizeof(int), cudaMemcpyDeviceToHost));
-
   // // onestep pipeline init
   // gamer = std::make_unique<BasicGamer>(DIRECTION, N, X, Y, LAYER, maxNumPins);
   // gamer->setWireCost(devWireCost);
-  // gamer->setViaCost(devViaCost);
+  // gamer->setNonStackViaCost(devNonStackViaCost);
+  // gamer->setUnitViaCost(unitViaCost);
 
   // twostep pipeline init
   int scaleX = std::min(X / 256, MAX_SCALE);
@@ -283,7 +327,8 @@ GPUMazeRouter::GPUMazeRouter(std::vector<GRNet> &nets, GridGraph &graph, const P
   coarseGamer2D->setCost2D(scaler2D->getCoarseCost2D());
   fineGamer = std::make_unique<GuidedGamer>(DIRECTION, N, X, Y, LAYER, maxNumPins);
   fineGamer->setWireCost(devWireCost);
-  fineGamer->setViaCost(devViaCost);
+  fineGamer->setNonStackViaCost(devNonStackViaCost);
+  fineGamer->setUnitViaCost(unitViaCost);
 }
 
 // void GPUMazeRouter::route(const std::vector<int> &netIndices, int numTurns, int margin)
@@ -303,8 +348,8 @@ GPUMazeRouter::GPUMazeRouter(std::vector<GRNet> &nets, GridGraph &graph, const P
 //             std::min(X, box.hx() + margin), std::min(Y, box.hy() + margin));
 //     rootIndices[netId] = pinIndices.front();
 //     calculateWireViaCost<<<dim3((box.width() + 31) / 32, (box.height() + 31) / 32, LAYER), dim3(32, 32, 1)>>>(
-//         devWireCost.get(), devViaCost.get(), devDemand.get(), devCapacity.get(), devHEdgeLengths.get(), devVEdgeLengths.get(),
-//         devLayerMinLengths.get(), devUnitLengthShortCosts.get(), unitLengthWireCost, unitViaCost, logisticSlope, viaMultiplier,
+//         devWireCost.get(), devNonStackViaCost.get(), devDemand.get(), devCapacity.get(),
+//         devHEdgeLengths.get(), devVEdgeLengths.get(), devUnitOverflowCosts.get(), unitLengthWireCost, unitViaCost,
 //         box.lx(), box.ly(), box.width(), box.height(), DIRECTION, N, X, Y, LAYER);
 //     gamer->route(pinIndices, numTurns, box);
 //     isRoutedNet[netId] = gamer->getIsRouted();
@@ -326,11 +371,13 @@ GPUMazeRouter::GPUMazeRouter(std::vector<GRNet> &nets, GridGraph &graph, const P
 
 void GPUMazeRouter::routeTwoStep(const std::vector<int> &netIndices, int numCoarseTurns, int numFineTurns, int coarseMargin)
 {
-  // rip-up
-  checkCudaErrors(cudaMemcpy(devNetIndices.get(), netIndices.data(), netIndices.size() * sizeof(int), cudaMemcpyHostToDevice));
-  commitRoutes<<<(netIndices.size() + 1023) / 1024, 1024>>>(
-      devDemand.get(), devAllRoutes.get(), devAllRoutesOffset.get(), devNetIndices.get(), 1, netIndices.size(), DIRECTION, N, X, Y, LAYER);
-
+  // reverse
+  for (auto netId : netIndices)
+  {
+    commitRoutes<<<1, 1>>>(
+      devDemand.get(), devFlag.get(), devAllRoutes.get() + allRoutesOffset[netId],
+      1, DIRECTION, N, X, Y, LAYER);
+  }
   // route
   std::vector<int> pinIndices(maxNumPins);
   std::vector<int> pin2DIndices(maxNumPins);
@@ -351,8 +398,8 @@ void GPUMazeRouter::routeTwoStep(const std::vector<int> &netIndices, int numCoar
         std::min(scaler2D->getCoarseX(), coarseBox.hx() + coarseMargin), std::min(scaler2D->getCoarseY(), coarseBox.hy() + coarseMargin));
     utils::BoxT<int> fineBox = scaler2D->finingBoundingBox(coarseBox);
     calculateWireViaCost<<<dim3((fineBox.width() + 31) / 32, (fineBox.height() + 31) / 32, LAYER), dim3(32, 32, 1)>>>(
-        devWireCost.get(), devViaCost.get(), devDemand.get(), devCapacity.get(), devHEdgeLengths.get(), devVEdgeLengths.get(),
-        devLayerMinLengths.get(), devUnitLengthShortCosts.get(), unitLengthWireCost, unitViaCost, logisticSlope, viaMultiplier,
+        devWireCost.get(), devNonStackViaCost.get(), devDemand.get(), devCapacity.get(),
+        devHEdgeLengths.get(), devVEdgeLengths.get(), devUnitOverflowCosts.get(), unitLengthWireCost, unitViaCost,
         fineBox.lx(), fineBox.ly(), fineBox.width(), fineBox.height(), DIRECTION, N, X, Y, LAYER);
     if (box.width() < 256 && box.height() < 256 && box.width() < scaler2D->getScaleX() && box.height() < scaler2D->getScaleY())
       guides2D.push_back(fineBox);
@@ -408,17 +455,16 @@ void GPUMazeRouter::routeTwoStep(const std::vector<int> &netIndices, int numCoar
     }
     checkCudaErrors(cudaMemcpy(devAllRoutes.get() + allRoutesOffset[netId], fineGamer->getRoutes().get(),
                                (allRoutesOffset[netId + 1] - allRoutesOffset[netId]) * sizeof(int), cudaMemcpyDeviceToDevice));
-    commitRoutes<<<1, 1>>>(
-        devDemand.get(), devAllRoutes.get(), devAllRoutesOffset.get(), devNetIndices.get() + i, 0, 1, DIRECTION, N, X, Y, LAYER);
+    commitRoutes<<<1, 1>>>(devDemand.get(), devFlag.get(), fineGamer->getRoutes().get(), 0, DIRECTION, N, X, Y, LAYER);
   }
+}
+
+void GPUMazeRouter::getOverflowNetIndices(std::vector<int> &netIndices)
+{
   // mark overflow net
   markOverflowNet<<<(nets.size() + 1023) / 1024, 1024>>>(
       devIsOverflowNet.get(), devDemand.get(), devCapacity.get(), devAllRoutes.get(), devAllRoutesOffset.get(), nets.size(), DIRECTION, N);
   checkCudaErrors(cudaMemcpy(isOverflowNet.data(), devIsOverflowNet.get(), nets.size() * sizeof(int), cudaMemcpyDeviceToHost));
-}
-
-void GPUMazeRouter::getOverflowNetIndices(std::vector<int> &netIndices) const
-{
   netIndices.clear();
   for (int netId = 0; netId < nets.size(); netId++)
   {

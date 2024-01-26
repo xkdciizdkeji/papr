@@ -22,7 +22,8 @@ GlobalRouter::GlobalRouter(const ISPD24Parser &parser, const Parameters &params)
         nets.emplace_back(i, parser.net_names[i], parser.net_access_points[i]);
     unit_length_wire_cost = parser.unit_length_wire_cost;
     unit_via_cost = parser.unit_via_cost;
-    unit_length_short_costs = parser.unit_length_short_costs;
+    // unit_length_short_costs = parser.unit_length_short_costs;
+    unit_overflow_costs = parser.unit_overflow_costs;
 }
 
 void GlobalRouter::route()
@@ -522,7 +523,8 @@ void GlobalRouter::printStatistics() const
                 }
             }
         }
-        overflow_cost += layer_overflows * 0.1; // gg.unit_overflow_cost();
+        // overflow_cost += layer_overflows * 0.1; // gg.unit_overflow_cost();
+        overflow_cost += layer_overflows * unit_overflow_costs[z];
         // log() << "Layer = " << z << " layer_nonstack_via_counter: "<<layer_nonstack_via_counter<< ", num_overflows = " << num_overflows << ", layer_overflows = " << layer_overflows << ", overflow cost = " << overflow_cost << std::endl;
         log() << "Layer = " << z << ", num_overflows = " << num_overflows << ", layer_overflows = " << layer_overflows << ", overflow cost = " << overflow_cost << std::endl;
     }

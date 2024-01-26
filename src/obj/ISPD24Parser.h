@@ -11,7 +11,7 @@ struct ISPD24Parser
     unsigned int n_layers, size_x, size_y;
     CostT unit_length_wire_cost;
     CostT unit_via_cost;
-    std::vector<CostT> unit_length_short_costs;
+    std::vector<CostT> unit_overflow_costs;
     std::vector<DBU> horizontal_gcell_edge_lengths;
     std::vector<DBU> vertical_gcell_edge_lengths;
     std::vector<std::string> layer_names;

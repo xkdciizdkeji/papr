@@ -24,23 +24,22 @@ public:
     inline DBU getLayerMinLength(int layerIndex) const { return layerMinLengths[layerIndex]; }
     // Utility functions for cost calculation
     inline CostT getUnitLengthWireCost() const { return unit_length_wire_cost; }
-    // CostT getUnitViaCost() const { return unit_via_cost; }
-    inline CostT getUnitLengthShortCost(const int layerIndex) const { return unit_length_short_costs[layerIndex]; }
+    inline CostT getUnitViaCost() const { return unit_via_cost; }
+    // inline CostT getUnitLengthShortCost(const int layerIndex) const { return unit_length_short_costs[layerIndex]; }
+    inline CostT getUnitOverflowCost(const int layerIndex) const { return unit_overflow_costs[layerIndex]; }
 
     inline uint64_t hashCell(const GRPoint& point) const {
         return ((uint64_t)point.layerIdx * xSize + point.x) * ySize + point.y;
     };
     inline uint64_t hashCell(const int x, const int y) const { return (uint64_t)x * ySize + y; }
-    // inline DBU getGridline(const unsigned dimension, const int index) const { return gridlines[dimension][index]; }
-    //utils::BoxT<DBU> getCellBox(utils::PointT<int> point) const;
-    //utils::BoxT<int> rangeSearchCells(const utils::BoxT<DBU>& box) const;
+
     inline GraphEdge getEdge(const int layerIndex, const int x, const int y) const {return graphEdges[layerIndex][x][y]; }
     
     // Costs
     DBU getEdgeLength(unsigned direction, unsigned edgeIndex) const { return edgeLengths[direction][edgeIndex]; }
     CostT getWireCost(const int layerIndex, const utils::PointT<int> u, const utils::PointT<int> v) const;
     CostT getViaCost(const int layerIndex, const utils::PointT<int> loc) const;
-    inline CostT getUnitViaCost() const { return unit_via_cost; }
+    CostT getNonStackViaCost(const int layerIndex, const utils::PointT<int> loc) const;
     
     // Misc
     void selectAccessPoints(GRNet& net, robin_hood::unordered_map<uint64_t, std::pair<utils::PointT<int>, utils::IntervalT<int>>>& selectedAccessPoints) const;
@@ -69,8 +68,6 @@ private:
     unsigned nLayers;
     unsigned xSize;
     unsigned ySize;
-    // std::vector<std::vector<DBU>> gridlines;
-    // std::vector<std::vector<DBU>> gridCenters;
     std::vector<std::vector<DBU>> edgeLengths;
     std::vector<std::string> layerNames;
     std::vector<unsigned> layerDirections;
@@ -79,24 +76,22 @@ private:
     // Unit costs
     CostT unit_length_wire_cost;
     CostT unit_via_cost;
-    std::vector<CostT> unit_length_short_costs;
+    // std::vector<CostT> unit_length_short_costs;
+    std::vector<CostT> unit_overflow_costs;
     
     DBU totalLength = 0;
     int totalNumVias = 0;
     std::vector<std::vector<std::vector<GraphEdge>>> graphEdges; 
     // gridEdges[l][x][y] stores the edge {(l, x, y), (l, x+1, y)} or {(l, x, y), (l, x, y+1)}
     // depending on the routing direction of the layer
-    
-    // utils::IntervalT<int> rangeSearchGridlines(const unsigned dimension, const utils::IntervalT<DBU>& locInterval) const;
-    // Find the gridlines within [locInterval.low, locInterval.high]
-    // utils::IntervalT<int> rangeSearchRows(const unsigned dimension, const utils::IntervalT<DBU>& locInterval) const;
-    // Find the rows/columns overlapping with [locInterval.low, locInterval.high]
+
+    // used in commiting routing tree
+    std::vector<std::vector<std::vector<bool>>> flag;
     
     inline double logistic(const CapacityT& input, const double slope) const;
     CostT getWireCost(const int layerIndex, const utils::PointT<int> lower, const CapacityT demand = 1.0) const;
     
     // Methods for updating demands 
-    void commit(const int layerIndex, const utils::PointT<int> lower, const CapacityT demand);
     void commitWire(const int layerIndex, const utils::PointT<int> lower, const bool reverse = false);
     void commitVia(const int layerIndex, const utils::PointT<int> loc, const bool reverse = false);
     void commitNonStackVia(const int layerIndex, const utils::PointT<int> loc, const bool reverse);
