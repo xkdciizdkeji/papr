@@ -224,9 +224,9 @@ void GlobalRouter::route()
 #ifndef ENABLE_ISSSORT
         sortNetIndices(netIndices);
 #else
-        log() << "sort net indices with OFDALI" << std::endl;
-        // sortNetIndicesOFDALD(netIndices, netOverflows);
-        sortNetIndicesOFDALI(netIndices, netOverflows);
+        log() << "sort net indices with OFDALD" << std::endl;
+        sortNetIndicesOFDALD(netIndices, netOverflows);
+        // sortNetIndicesOFDALI(netIndices, netOverflows);
 #endif
         // for (const int netIndex : netIndices)
         // {
@@ -338,9 +338,9 @@ void GlobalRouter::route()
 // #ifndef ENABLE_ISSSORT
 //         sortNetIndices(netIndices);
 // #else
-//         log() << "sort net indices with OFDALI" << std::endl;
-//         // sortNetIndicesOFDALD(netIndices, netOverflows);
-//         sortNetIndicesOFDALI(netIndices, netOverflows);
+//         log() << "sort net indices with OFDALD" << std::endl;
+        // sortNetIndicesOFDALD(netIndices, netOverflows);
+        sortNetIndicesOFDALI(netIndices, netOverflows);
 // #endif
 //         SparseGrid grid(10, 10, 0, 0);
 //         for (const int netIndex : netIndices)
