@@ -489,7 +489,7 @@ void GridGraph::extractWireCostView(GridGraphView<CostT> &view) const
                 
                 // ------ new cost ------                
                 CostT slope = capacity > 0.f ? 0.5f : 1.5f;
-                view[direction][x][y] = length * unit_length_wire_cost + unitOverflowCost * exp(slope * (demand - capacity)) * (exp(slope) - 1);
+                view[direction][x][y] = length * unit_length_wire_cost + 50*unitOverflowCost * exp(slope * (demand - capacity)) * (exp(slope) - 1);
             }
         }
     }
@@ -526,7 +526,7 @@ void GridGraph::updateWireCostView(GridGraphView<CostT> &view, std::shared_ptr<G
         
         // ------ new cost ------
         CostT slope = capacity > 0.f ? 0.5f : 1.5f;
-        view[direction][x][y] = length * unit_length_wire_cost + unitOverflowCost[direction] * exp(slope * (demand - capacity)) * (exp(slope) - 1);
+        view[direction][x][y] = length * unit_length_wire_cost + 50*unitOverflowCost[direction] * exp(slope * (demand - capacity)) * (exp(slope) - 1);
     };
     GRTreeNode::preorder(routingTree, [&](std::shared_ptr<GRTreeNode> node)
                          {

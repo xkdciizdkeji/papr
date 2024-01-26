@@ -1,4 +1,4 @@
-data_list=("ariane133_51")
+data_list=("ariane133_68")
 input_path="/home/luxu/cugr/benchmark/Simple_inputs"
 output_path="/home/luxu/cugr/gr_multi_gpu/run0124"
 for data in "${data_list[@]}"

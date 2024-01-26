@@ -323,72 +323,73 @@ void GlobalRouter::route()
     t = std::chrono::high_resolution_clock::now();
 
     // Stage 3: maze routing
-    n3 = netIndices.size();
-#ifndef ENABLE_CUDA
-    if (netIndices.size() > 0)
-    {
+//     n3 = netIndices.size();
+// #ifndef ENABLE_CUDA
+//     if (netIndices.size() > 0)
+//     {
         log() << "stage 3: maze routing on sparsified routing graph" << std::endl;
-        for (const int netIndex : netIndices)
-        {
-            GRNet &net = nets[netIndex];
-            gridGraph.commitTree(net.getRoutingTree(), true);
-        }
-        GridGraphView<CostT> wireCostView;
-        gridGraph.extractWireCostView(wireCostView);
-#ifndef ENABLE_ISSSORT
-        sortNetIndices(netIndices);
-#else
-        log() << "sort net indices with OFDALI" << std::endl;
-        // sortNetIndicesOFDALD(netIndices, netOverflows);
-        sortNetIndicesOFDALI(netIndices, netOverflows);
-#endif
-        SparseGrid grid(10, 10, 0, 0);
-        for (const int netIndex : netIndices)
-        {
-            GRNet &net = nets[netIndex];
-            // gridGraph.commitTree(net.getRoutingTree(), true);
-            // gridGraph.updateWireCostView(wireCostView, net.getRoutingTree());
-            MazeRoute mazeRoute(net, gridGraph, parameters);
-            mazeRoute.constructSparsifiedGraph(wireCostView, grid);
-            mazeRoute.run();
-            std::shared_ptr<SteinerTreeNode> tree = mazeRoute.getSteinerTree();
-            assert(tree != nullptr);
+//         for (const int netIndex : netIndices)
+//         {
+//             GRNet &net = nets[netIndex];
+//             gridGraph.commitTree(net.getRoutingTree(), true);
+//         }
+//         GridGraphView<CostT> wireCostView;
+//         gridGraph.extractWireCostView(wireCostView);
+// #ifndef ENABLE_ISSSORT
+//         sortNetIndices(netIndices);
+// #else
+//         log() << "sort net indices with OFDALI" << std::endl;
+//         // sortNetIndicesOFDALD(netIndices, netOverflows);
+//         sortNetIndicesOFDALI(netIndices, netOverflows);
+// #endif
+//         SparseGrid grid(10, 10, 0, 0);
+//         for (const int netIndex : netIndices)
+//         {
+//             GRNet &net = nets[netIndex];
+//             // gridGraph.commitTree(net.getRoutingTree(), true);
+//             // gridGraph.updateWireCostView(wireCostView, net.getRoutingTree());
+//             MazeRoute mazeRoute(net, gridGraph, parameters);
+//             mazeRoute.constructSparsifiedGraph(wireCostView, grid);
+//             mazeRoute.run();
+//             std::shared_ptr<SteinerTreeNode> tree = mazeRoute.getSteinerTree();
+//             assert(tree != nullptr);
 
-            PatternRoute patternRoute(net, gridGraph, parameters);
-            patternRoute.setSteinerTree(tree);
-            patternRoute.constructRoutingDAG();
-            patternRoute.run();
+//             PatternRoute patternRoute(net, gridGraph, parameters);
+//             patternRoute.setSteinerTree(tree);
+//             patternRoute.constructRoutingDAG();
+//             patternRoute.run();
 
-            gridGraph.commitTree(net.getRoutingTree());
-            gridGraph.updateWireCostView(wireCostView, net.getRoutingTree());
-            grid.step();
-        }
-        netIndices.clear();
-        for (const auto &net : nets)
-        {
-            if (gridGraph.checkOverflow(net.getRoutingTree()) > 0)
-            {
-                netIndices.push_back(net.getIndex());
-            }
-        }
+//             gridGraph.commitTree(net.getRoutingTree());
+//             gridGraph.updateWireCostView(wireCostView, net.getRoutingTree());
+//             grid.step();
+//         }
+//         netIndices.clear();
+//         for (const auto &net : nets)
+//         {
+//             if (gridGraph.checkOverflow(net.getRoutingTree()) > 0)
+//             {
+//                 netIndices.push_back(net.getIndex());
+//             }
+//         }
+//         log() << netIndices.size() << " / " << nets.size() << " nets have overflows." << std::endl;
+//         logeol();
+//         // afile<<netIndices.size()<<" ";
+//     }
+// #else
+//     if (netIndices.size() > 0)
+//     {
+//         log() << "stage 3: gpu maze routing\n";
+//         GPUMazeRoute mazeRoute(nets, gridGraph, parameters);
+//         mazeRoute.run();
+//         mazeRoute.getOverflowNetIndices(netIndices);
         log() << netIndices.size() << " / " << nets.size() << " nets have overflows." << std::endl;
-        logeol();
-        // afile<<netIndices.size()<<" ";
-    }
-#else
-    if (netIndices.size() > 0)
-    {
-        log() << "stage 3: gpu maze routing\n";
-        GPUMazeRoute mazeRoute(nets, gridGraph, parameters);
-        mazeRoute.run();
-        mazeRoute.getOverflowNetIndices(netIndices);
-        log() << netIndices.size() << " / " << nets.size() << " nets have overflows." << std::endl;
-    }
-#endif
+//     }
+// #endif
     t3 = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t).count();
     t = std::chrono::high_resolution_clock::now();
 
     log() << "step routed #nets: " << n1 << ", " << n2 << ", " << n3 << "\n";
+    // log() << "step routed #nets: " << n1 << ", " << n2 << "\n";
     log() << "step time consumption: "
           << std::setprecision(3) << std::fixed << t1 << " s, "
           << std::setprecision(3) << std::fixed << t2 << " s, "

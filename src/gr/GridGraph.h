@@ -26,6 +26,7 @@ public:
     inline CostT getUnitLengthWireCost() const { return unit_length_wire_cost; }
     inline CostT getUnitViaCost() const { return unit_via_cost; }
     // inline CostT getUnitLengthShortCost(const int layerIndex) const { return unit_length_short_costs[layerIndex]; }
+    // inline CostT getUnitOverflowCost(const int layerIndex) const { return unit_overflow_costs[layerIndex]; }
     inline CostT getUnitOverflowCost(const int layerIndex) const { return unit_overflow_costs[layerIndex]; }
 
     inline uint64_t hashCell(const GRPoint& point) const {
