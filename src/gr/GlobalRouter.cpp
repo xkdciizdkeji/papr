@@ -222,9 +222,9 @@ void GlobalRouter::route()
 #ifndef ENABLE_ISSSORT
         sortNetIndices(netIndices);
 #else
-        log() << "sort net indices with OFDALD" << std::endl;
-        sortNetIndicesOFDALD(netIndices, netOverflows);
-        // sortNetIndicesD(netIndices);
+        log() << "sort net indices with OFDALI" << std::endl;
+        // sortNetIndicesOFDALD(netIndices, netOverflows);
+        sortNetIndicesOFDALI(netIndices, netOverflows);
 #endif
         // for (const int netIndex : netIndices)
         // {
@@ -336,8 +336,9 @@ void GlobalRouter::route()
 #ifndef ENABLE_ISSSORT
         sortNetIndices(netIndices);
 #else
-        log() << "sort net indices with OFDALD" << std::endl;
-        sortNetIndicesOFDALD(netIndices, netOverflows);
+        log() << "sort net indices with OFDALI" << std::endl;
+        // sortNetIndicesOFDALD(netIndices, netOverflows);
+        sortNetIndicesOFDALI(netIndices, netOverflows);
 #endif
         SparseGrid grid(10, 10, 0, 0);
         for (const int netIndex : netIndices)
@@ -438,6 +439,18 @@ void GlobalRouter::sortNetIndicesOFDALD(vector<int> &netIndices, vector<int> &ne
     }
     sort(netIndices.begin(), netIndices.end(), [&](int lhs, int rhs)
          { return scores[lhs] > scores[rhs]; });
+}
+
+void GlobalRouter::sortNetIndicesOFDALI(vector<int> &netIndices, vector<int> &netOverflow) const
+{
+    vector<int> scores(nets.size());
+    for (int netIndex : netIndices)
+    {
+        auto &net = nets[netIndex];
+        scores[netIndex] = net.getBoundingBox().hp() + 30 * netOverflow[netIndex];
+    }
+    sort(netIndices.begin(), netIndices.end(), [&](int lhs, int rhs)
+         { return scores[lhs] < scores[rhs]; });
 }
 
 void GlobalRouter::sortNetIndicesOLD(vector<int> &netIndices) const
@@ -739,11 +752,12 @@ void GlobalRouter::printStatistics() const
     double wireCost = wireLength * unit_length_wire_cost;
     double viaCost = viaCount * unit_via_cost * via_cost_scale;
     double overflowCost = overflow_cost * overflow_cost_scale;
-    double totalCost = wireCost + viaCost + overflowCost;
+    double totalCost = wireCost + viaCost + 50*overflowCost;
 
     log() << "wire cost:                " << wireCost << std::endl;
     log() << "via cost:                 " << viaCost << std::endl;
     log() << "overflow cost:            " << overflowCost << std::endl;
+    log() << "overflow cost*50:            " << overflowCost*50 << std::endl;
     log() << "total cost(ispd24 score): " << totalCost << std::endl;
     // std::ofstream  afile;
     // afile.open("time", std::ios::app);

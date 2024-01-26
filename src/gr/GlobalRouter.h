@@ -32,6 +32,7 @@ private:
     void sortNetIndicesD(std::vector<int> &netIndices) const;
     void sortNetIndicesOFD(std::vector<int> &netIndices, std::vector<int> &netOverflow) const;
     void sortNetIndicesOFDALD(std::vector<int> &netIndices, std::vector<int> &netOverflow) const;
+    void sortNetIndicesOFDALI(std::vector<int> &netIndices, std::vector<int> &netOverflow) const;
     void sortNetIndicesOLD(std::vector<int> &netIndices) const;
     void sortNetIndicesOLI(std::vector<int> &netIndices) const;
     void sortNetIndicesRandom(std::vector<int> &netIndices) const;
