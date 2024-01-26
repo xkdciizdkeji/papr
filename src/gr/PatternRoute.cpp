@@ -722,6 +722,10 @@ void PatternRoute::calculateRoutingCosts(std::shared_ptr<PatternRoutingNode> &no
     {
         viaCosts[layerIndex] = viaCosts[layerIndex - 1] + gridGraph.getViaCost(layerIndex - 1, *node);
     }
+    vector<CostT> nonStackViaCosts(gridGraph.getNumLayers());
+    nonStackViaCosts[0] = 0.f;
+    for(int layerIndex = 1; layerIndex < gridGraph.getNumLayers(); layerIndex++)
+        nonStackViaCosts[layerIndex] = nonStackViaCosts[layerIndex - 1] + gridGraph.getNonStackViaCost(layerIndex, *node);
     utils::IntervalT<int> fixedLayers = node->fixedLayers;
     fixedLayers.low = std::min(fixedLayers.low, static_cast<int>(gridGraph.getNumLayers()) - 1);
     fixedLayers.high = std::max(fixedLayers.high, parameters.min_routing_layer);
@@ -748,10 +752,9 @@ void PatternRoute::calculateRoutingCosts(std::shared_ptr<PatternRoutingNode> &no
             if (layerIndex >= fixedLayers.high)
             {
                 CostT cost = viaCosts[layerIndex] - viaCosts[lowLayerIndex];
-                for (CostT childCost : minChildCosts)
-                    cost += childCost;
-                if (cost < node->costs[layerIndex])
-                {
+                cost += (layerIndex - lowLayerIndex >= 2) ? (nonStackViaCosts[layerIndex - 1] - nonStackViaCosts[lowLayerIndex]) : 0.f;
+                for (CostT childCost : minChildCosts) cost += childCost;
+                if (cost < node->costs[layerIndex]) {
                     node->costs[layerIndex] = cost;
                     node->bestPaths[layerIndex] = bestPaths;
                 }

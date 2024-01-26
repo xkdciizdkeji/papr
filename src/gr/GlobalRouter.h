@@ -26,7 +26,8 @@ private:
     // for evaluation
     CostT unit_length_wire_cost;
     CostT unit_via_cost;
-    std::vector<CostT> unit_length_short_costs;
+    // std::vector<CostT> unit_length_short_costs;
+    std::vector<CostT> unit_overflow_costs;
     
     void sortNetIndices(std::vector<int>& netIndices) const; 
     void sortNetIndicesD(std::vector<int> &netIndices) const;
