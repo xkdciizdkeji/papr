@@ -339,8 +339,8 @@ void GlobalRouter::route()
 //         sortNetIndices(netIndices);
 // #else
 //         log() << "sort net indices with OFDALD" << std::endl;
-        // sortNetIndicesOFDALD(netIndices, netOverflows);
-        sortNetIndicesOFDALI(netIndices, netOverflows);
+        sortNetIndicesOFDALD(netIndices, netOverflows);
+        // sortNetIndicesOFDALI(netIndices, netOverflows);
 // #endif
 //         SparseGrid grid(10, 10, 0, 0);
 //         for (const int netIndex : netIndices)
