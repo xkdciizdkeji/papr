@@ -13,5 +13,8 @@ public:
   void run();
   void getOverflowNetIndices(std::vector<int> &netIndices) const;
 private:
+  const Parameters &parameters;
+  const GridGraph &gridGraph;
+  const std::vector<GRNet> &nets;
   std::unique_ptr<GPUMazeRouter> router;
 };

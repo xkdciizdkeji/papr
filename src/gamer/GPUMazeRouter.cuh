@@ -16,8 +16,9 @@ class GPUMazeRouter
 public:
   GPUMazeRouter(std::vector<GRNet> &nets, GridGraph &graph, const Parameters &params);
 
-  // void route(const std::vector<int> &netIndices, int numTurns, int margin);
+  void route(const std::vector<int> &netIndices, int numTurns, int margin);
   void routeTwoStep(const std::vector<int> &netIndices, int numCoarseTurns, int numFineTurns, int coarseMargin);
+  void routeSparse(const std::vector<int> &netIndices, int numTurns, int interval);
   void applyToCpu(const std::vector<int> &netIndices);
   void getOverflowNetIndices(std::vector<int> &netIndices);
 
@@ -59,13 +60,15 @@ private:
   std::vector<int> allRoutesOffset;
   cuda_unique_ptr<int[]> devAllRoutesOffset;
 
-  // // one-step routing
-  // std::unique_ptr<BasicGamer> gamer;
+  // one-step routing
+  std::unique_ptr<BasicGamer> gamer;
   // two-step routing
   std::unique_ptr<Grid2DExtractor> extractor2D;
   std::unique_ptr<GridScaler2D> scaler2D;
   std::unique_ptr<BasicGamer2D> coarseGamer2D;
   std::unique_ptr<GuidedGamer> fineGamer;
+  // sparse-grid routing
+  std::unique_ptr<GuidedGamer> sparseGamer;
 };
 
 #endif

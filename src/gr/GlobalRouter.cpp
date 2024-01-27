@@ -38,80 +38,80 @@ void GlobalRouter::route()
     netIndices.reserve(nets.size());
     for (const auto &net : nets)
         netIndices.push_back(net.getIndex());
-    // Stage 1: Pattern routing
-    n1 = netIndices.size();
-    PatternRoute::readFluteLUT();
-    log() << "stage 1: pattern routing" << std::endl;
-    sortNetIndices(netIndices);
-    for (const int netIndex : netIndices)
-    {
-        PatternRoute patternRoute(nets[netIndex], gridGraph, parameters);
-        patternRoute.constructSteinerTree();
-        patternRoute.constructRoutingDAG();
-        patternRoute.run();
-        gridGraph.commitTree(nets[netIndex].getRoutingTree());
-    }
+    // // Stage 1: Pattern routing
+    // n1 = netIndices.size();
+    // PatternRoute::readFluteLUT();
+    // log() << "stage 1: pattern routing" << std::endl;
+    // sortNetIndices(netIndices);
+    // for (const int netIndex : netIndices)
+    // {
+    //     PatternRoute patternRoute(nets[netIndex], gridGraph, parameters);
+    //     patternRoute.constructSteinerTree();
+    //     patternRoute.constructRoutingDAG();
+    //     patternRoute.run();
+    //     gridGraph.commitTree(nets[netIndex].getRoutingTree());
+    // }
 
-    netIndices.clear();
-    for (const auto &net : nets)
-    {
-        int netOverflow = gridGraph.checkOverflow(net.getRoutingTree());
-        if (netOverflow > 0)
-        {
-            netIndices.push_back(net.getIndex());
-            netOverflows[net.getIndex()] = netOverflow;
-        }
-    }
-    log() << netIndices.size() << " / " << nets.size() << " nets have overflows." << std::endl;
-    logeol();
+    // netIndices.clear();
+    // for (const auto &net : nets)
+    // {
+    //     int netOverflow = gridGraph.checkOverflow(net.getRoutingTree());
+    //     if (netOverflow > 0)
+    //     {
+    //         netIndices.push_back(net.getIndex());
+    //         netOverflows[net.getIndex()] = netOverflow;
+    //     }
+    // }
+    // log() << netIndices.size() << " / " << nets.size() << " nets have overflows." << std::endl;
+    // logeol();
     // printStatistics();
     t1 = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t).count();
     t = std::chrono::high_resolution_clock::now();
 
     // Stage 2: Pattern routing with possible detours
     n2 = netIndices.size();
-    if (netIndices.size() > 0)
-    {
-        log() << "stage 2: pattern routing with possible detours" << std::endl;
-        GridGraphView<bool> congestionView; // (2d) direction -> x -> y -> has overflow?
-        gridGraph.extractCongestionView(congestionView);
-        // for (const int netIndex : netIndices) {
-        //     GRNet& net = nets[netIndex];
-        //     gridGraph.commitTree(net.getRoutingTree(), true);
-        // }
-#ifndef ENABLE_ISSSORT
-        sortNetIndices(netIndices);
-#else
-        log() << "sort net indices with OFDALD" << std::endl;
-        sortNetIndicesOFDALD(netIndices, netOverflows);
-        // sortNetIndicesD(netIndices);
-#endif
-        for (const int netIndex : netIndices)
-        {
-            GRNet &net = nets[netIndex];
-            gridGraph.commitTree(net.getRoutingTree(), true);
-            PatternRoute patternRoute(net, gridGraph, parameters);
-            patternRoute.constructSteinerTree();
-            patternRoute.constructRoutingDAG();
-            patternRoute.constructDetours(congestionView); // KEY DIFFERENCE compared to stage 1
-            patternRoute.run();
-            gridGraph.commitTree(net.getRoutingTree());
-        }
+//     if (netIndices.size() > 0)
+//     {
+//         log() << "stage 2: pattern routing with possible detours" << std::endl;
+//         GridGraphView<bool> congestionView; // (2d) direction -> x -> y -> has overflow?
+//         gridGraph.extractCongestionView(congestionView);
+//         // for (const int netIndex : netIndices) {
+//         //     GRNet& net = nets[netIndex];
+//         //     gridGraph.commitTree(net.getRoutingTree(), true);
+//         // }
+// #ifndef ENABLE_ISSSORT
+//         sortNetIndices(netIndices);
+// #else
+//         log() << "sort net indices with OFDALD" << std::endl;
+//         sortNetIndicesOFDALD(netIndices, netOverflows);
+//         // sortNetIndicesD(netIndices);
+// #endif
+//         for (const int netIndex : netIndices)
+//         {
+//             GRNet &net = nets[netIndex];
+//             gridGraph.commitTree(net.getRoutingTree(), true);
+//             PatternRoute patternRoute(net, gridGraph, parameters);
+//             patternRoute.constructSteinerTree();
+//             patternRoute.constructRoutingDAG();
+//             patternRoute.constructDetours(congestionView); // KEY DIFFERENCE compared to stage 1
+//             patternRoute.run();
+//             gridGraph.commitTree(net.getRoutingTree());
+//         }
 
-        netIndices.clear();
-        for (const auto &net : nets)
-        {
-            int netOverflow = gridGraph.checkOverflow(net.getRoutingTree());
-            if (netOverflow > 0)
-            {
-                netIndices.push_back(net.getIndex());
-                netOverflows[net.getIndex()] = netOverflow;
-                // log() << "netindex: " << net.getIndex() << " netoverflow: " << netOverflow << std::endl;
-            }
-        }
-        log() << netIndices.size() << " / " << nets.size() << " nets have overflows." << std::endl;
-        logeol();
-    }
+//         netIndices.clear();
+//         for (const auto &net : nets)
+//         {
+//             int netOverflow = gridGraph.checkOverflow(net.getRoutingTree());
+//             if (netOverflow > 0)
+//             {
+//                 netIndices.push_back(net.getIndex());
+//                 netOverflows[net.getIndex()] = netOverflow;
+//                 // log() << "netindex: " << net.getIndex() << " netoverflow: " << netOverflow << std::endl;
+//             }
+//         }
+//         log() << netIndices.size() << " / " << nets.size() << " nets have overflows." << std::endl;
+//         logeol();
+//     }
     // printStatistics();
     t2 = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t).count();
     t = std::chrono::high_resolution_clock::now();

@@ -195,6 +195,86 @@ __global__ static void calculateWireViaCost(realT *wireCost, realT *nonStackViaC
   }
 }
 
+__global__ static void updateWireViaCost(realT *wireCost, realT *nonStackViaCost, const int *routes, const realT *demand, const realT *capacity,
+                                         const realT *hEdgeLengths, const realT *vEdgeLengths,
+                                         const realT *unitOverflowCosts, realT unitLengthWireCost, realT unitViaCost,
+                                         int DIRECTION, int N, int X, int Y, int LAYER)
+{
+  for (int i = 0; i < routes[0]; i += 2)
+  {
+    int startIdx = routes[1 + i];
+    int endIdx = routes[2 + i];
+    auto [startX, startY, startZ] = idxToXYZ(startIdx, DIRECTION, N);
+    auto [endX, endY, endZ] = idxToXYZ(endIdx, DIRECTION, N);
+    if (startZ == endZ) // wires
+    {
+      for (int idx = startIdx, x = startX, y = startY, z = startZ; idx <= endIdx; idx++, x += ((z & 1) ^ DIRECTION), y += !((z & 1) ^ DIRECTION))
+      {
+        // update wire cost
+        realT edgeLength = ((z & 1) ^ DIRECTION) ? (x > 0 ? hEdgeLengths[x] : 0.f) : (y > 0 ? vEdgeLengths[y] : 0.f);
+        realT slope = capacity[idx] > 0.f ? 0.5f : 1.5f;
+        wireCost[idx] = edgeLength * unitLengthWireCost + unitOverflowCosts[z] * exp(slope * (demand[idx] - capacity[idx])) * (exp(slope) - 1);
+        // update via cost
+        if ((z & 1) ^ DIRECTION ? (x == 0) : (y == 0))
+        {
+          realT rs = capacity[idx + 1] > 0.f ? 0.5f : 1.5f;
+          nonStackViaCost[idx] = unitOverflowCosts[z] * exp(rs * (demand[idx + 1] - capacity[idx + 1])) * (exp(rs) - 1);
+        }
+        else if ((z & 1) ^ DIRECTION ? (x == X - 1) : (y == Y - 1))
+        {
+          realT ls = capacity[idx] > 0.f ? 0.5f : 1.5f;
+          nonStackViaCost[idx] = unitOverflowCosts[z] * exp(ls * (demand[idx] - capacity[idx])) * (exp(ls) - 1);
+        }
+        else
+        {
+          realT ls = capacity[idx] > 0.f ? 0.5f : 1.5f;
+          realT rs = capacity[idx + 1] > 0.f ? 0.5f : 1.5f;
+          nonStackViaCost[idx] = unitOverflowCosts[z] * exp(ls * (demand[idx] - capacity[idx])) * (exp(ls * 0.5f) - 1) +
+                                 unitOverflowCosts[z] * exp(rs * (demand[idx + 1] - capacity[idx + 1])) * (exp(rs * 0.5f) - 1);
+        }
+      }
+    }
+    else // vias
+    {
+      for (int z = startZ, x = startX, y = startY; z <= endZ; z++)
+      {
+        int idx = xyzToIdx(x, y, z, DIRECTION, N);
+        // update wire cost
+        if (((z & 1) ^ DIRECTION) ? (x > 0) : (y > 0))
+        {
+          realT edgeLength = ((z & 1) ^ DIRECTION) ? hEdgeLengths[x] : vEdgeLengths[y];
+          realT slope = capacity[idx] > 0.f ? 0.5f : 1.5f;
+          wireCost[idx] = edgeLength * unitLengthWireCost + unitOverflowCosts[z] * exp(slope * (demand[idx] - capacity[idx])) * (exp(slope) - 1);
+        }
+        if (((z & 1) ^ DIRECTION) ? (x < X - 1) : (y < Y - 1))
+        {
+          realT edgeLength = ((z & 1) ^ DIRECTION) ? hEdgeLengths[x + 1] : vEdgeLengths[y + 1];
+          realT slope = capacity[idx + 1] > 0.f ? 0.5f : 1.5f;
+          wireCost[idx + 1] = edgeLength * unitLengthWireCost + unitOverflowCosts[z] * exp(slope * (demand[idx + 1] - capacity[idx + 1])) * (exp(slope) - 1);
+        }
+        // update via cost
+        if (((z & 1) ^ DIRECTION) ? (x == 0) : (y == 0))
+        {
+          realT rs = capacity[idx + 1] > 0.f ? 0.5f : 1.5f;
+          nonStackViaCost[idx] = unitOverflowCosts[startZ] * exp(rs * (demand[idx + 1] - capacity[idx + 1])) * (exp(rs) - 1);
+        }
+        else if (((z & 1) ^ DIRECTION) ? (x == X - 1) : (y == Y - 1))
+        {
+          realT ls = capacity[idx] > 0.f ? 0.5f : 1.5f;
+          nonStackViaCost[idx] = unitOverflowCosts[startZ] * exp(ls * (demand[idx] - capacity[idx])) * (exp(ls) - 1);
+        }
+        else
+        {
+          realT ls = capacity[idx] > 0.f ? 0.5f : 1.5f;
+          realT rs = capacity[idx + 1] > 0.f ? 0.5f : 1.5f;
+          nonStackViaCost[idx] = unitOverflowCosts[startZ] * exp(ls * (demand[idx] - capacity[idx])) * (exp(ls * 0.5f) - 1) +
+                                 unitOverflowCosts[startZ] * exp(rs * (demand[idx + 1] - capacity[idx + 1])) * (exp(rs * 0.5f) - 1);
+        }
+      }
+    }
+  }
+}
+
 // ----------------------------------
 // GPU Maze Router
 // ----------------------------------
@@ -291,9 +371,9 @@ GPUMazeRouter::GPUMazeRouter(std::vector<GRNet> &nets, GridGraph &graph, const P
   {
     int *routes = allRoutes.data() + allRoutesOffset[i];
     auto tree = nets[i].getRoutingTree();
+    routes[0] = 0;
     if (tree != nullptr)
     {
-      routes[0] = 0;
       GRTreeNode::preorder(tree, [&](std::shared_ptr<GRTreeNode> node)
                            {
         int nodeIdx = xyzToIdx(node->x, node->y, node->layerIdx, DIRECTION, N);
@@ -309,74 +389,77 @@ GPUMazeRouter::GPUMazeRouter(std::vector<GRNet> &nets, GridGraph &graph, const P
   devAllRoutes = cuda_make_unique<int[]>(allRoutes.size());
   checkCudaErrors(cudaMemcpy(devAllRoutesOffset.get(), allRoutesOffset.data(), allRoutesOffset.size() * sizeof(int), cudaMemcpyHostToDevice));
   checkCudaErrors(cudaMemcpy(devAllRoutes.get(), allRoutes.data(), allRoutes.size() * sizeof(int), cudaMemcpyHostToDevice));
-
-  // // onestep pipeline init
-  // gamer = std::make_unique<BasicGamer>(DIRECTION, N, X, Y, LAYER, maxNumPins);
-  // gamer->setWireCost(devWireCost);
-  // gamer->setNonStackViaCost(devNonStackViaCost);
-  // gamer->setUnitViaCost(unitViaCost);
-
-  // twostep pipeline init
-  int scaleX = std::min(X / 256, MAX_SCALE);
-  int scaleY = std::min(Y / 256, MAX_SCALE);
-  extractor2D = std::make_unique<Grid2DExtractor>(DIRECTION, N, X, Y, LAYER);
-  extractor2D->setWireCost(devWireCost);
-  scaler2D = std::make_unique<GridScaler2D>(X, Y, scaleX, scaleY);
-  scaler2D->setCost2D(extractor2D->getCost2D());
-  coarseGamer2D = std::make_unique<BasicGamer2D>(scaler2D->getCoarseX(), scaler2D->getCoarseY(), maxNumPins);
-  coarseGamer2D->setCost2D(scaler2D->getCoarseCost2D());
-  fineGamer = std::make_unique<GuidedGamer>(DIRECTION, N, X, Y, LAYER, maxNumPins);
-  fineGamer->setWireCost(devWireCost);
-  fineGamer->setNonStackViaCost(devNonStackViaCost);
-  fineGamer->setUnitViaCost(unitViaCost);
 }
 
-// void GPUMazeRouter::route(const std::vector<int> &netIndices, int numTurns, int margin)
-// {
-//   // rip-up
-//   checkCudaErrors(cudaMemcpy(devNetIndices.get(), netIndices.data(), netIndices.size() * sizeof(int), cudaMemcpyHostToDevice));
-//   commitRoutes<<<(netIndices.size() + 1023) / 1024, 1024>>>(
-//       devDemand.get(), devAllRoutes.get(), devAllRoutesOffset.get(), devNetIndices.get(), 1, netIndices.size(), DIRECTION, N, X, Y, LAYER);
-//   // route
-//   std::vector<int> pinIndices(maxNumPins);
-//   for (int i = 0; i < netIndices.size(); i++)
-//   {
-//     int netId = netIndices[i];
-//     selectAccessPoints(nets[netId], pinIndices);
-//     utils::BoxT<int> box = getPinIndicesBoundingBox(pinIndices, DIRECTION, N);
-//     box.Set(std::max(0, box.lx() - margin), std::max(0, box.ly() - margin),
-//             std::min(X, box.hx() + margin), std::min(Y, box.hy() + margin));
-//     rootIndices[netId] = pinIndices.front();
-//     calculateWireViaCost<<<dim3((box.width() + 31) / 32, (box.height() + 31) / 32, LAYER), dim3(32, 32, 1)>>>(
-//         devWireCost.get(), devNonStackViaCost.get(), devDemand.get(), devCapacity.get(),
-//         devHEdgeLengths.get(), devVEdgeLengths.get(), devUnitOverflowCosts.get(), unitLengthWireCost, unitViaCost,
-//         box.lx(), box.ly(), box.width(), box.height(), DIRECTION, N, X, Y, LAYER);
-//     gamer->route(pinIndices, numTurns, box);
-//     isRoutedNet[netId] = gamer->getIsRouted();
-//     if (!isRoutedNet[netId])
-//     {
-//       utils::log() << "gamer error: route net(id=" << netId << ") failed\n";
-//       return;
-//     }
-//     checkCudaErrors(cudaMemcpy(devAllRoutes.get() + allRoutesOffset[netId], gamer->getRoutes().get(),
-//                                (allRoutesOffset[netId + 1] - allRoutesOffset[netId]) * sizeof(int), cudaMemcpyDeviceToDevice));
-//     commitRoutes<<<1, 1>>>(
-//         devDemand.get(), devAllRoutes.get(), devAllRoutesOffset.get(), devNetIndices.get() + i, 0, 1, DIRECTION, N, X, Y, LAYER);
-//   }
-//   // mark overflow net
-//   markOverflowNet<<<(nets.size() + 1023) / 1024, 1024>>>(
-//       devIsOverflowNet.get(), devDemand.get(), devCapacity.get(), devAllRoutes.get(), devAllRoutesOffset.get(), nets.size(), DIRECTION, N);
-//   checkCudaErrors(cudaMemcpy(isOverflowNet.data(), devIsOverflowNet.get(), nets.size() * sizeof(int), cudaMemcpyDeviceToHost));
-// }
-
-void GPUMazeRouter::routeTwoStep(const std::vector<int> &netIndices, int numCoarseTurns, int numFineTurns, int coarseMargin)
+void GPUMazeRouter::route(const std::vector<int> &netIndices, int numTurns, int margin)
 {
+  if (gamer == nullptr)
+  {
+    // onestep pipeline init
+    gamer = std::make_unique<BasicGamer>(DIRECTION, N, X, Y, LAYER, maxNumPins);
+    gamer->setWireCost(devWireCost);
+    gamer->setNonStackViaCost(devNonStackViaCost);
+    gamer->setUnitViaCost(unitViaCost);
+  }
+
   // reverse
   for (auto netId : netIndices)
   {
     commitRoutes<<<1, 1>>>(
-      devDemand.get(), devFlag.get(), devAllRoutes.get() + allRoutesOffset[netId],
-      1, DIRECTION, N, X, Y, LAYER);
+        devDemand.get(), devFlag.get(), devAllRoutes.get() + allRoutesOffset[netId],
+        1, DIRECTION, N, X, Y, LAYER);
+  }
+  // route
+  std::vector<int> pinIndices(maxNumPins);
+  for (int i = 0; i < netIndices.size(); i++)
+  {
+    int netId = netIndices[i];
+    selectAccessPoints(nets[netId], pinIndices);
+    utils::BoxT<int> box = getPinIndicesBoundingBox(pinIndices, DIRECTION, N);
+    box.Set(std::max(0, box.lx() - margin), std::max(0, box.ly() - margin),
+            std::min(X, box.hx() + margin), std::min(Y, box.hy() + margin));
+    rootIndices[netId] = pinIndices.front();
+    calculateWireViaCost<<<dim3((box.width() + 31) / 32, (box.height() + 31) / 32, LAYER), dim3(32, 32, 1)>>>(
+        devWireCost.get(), devNonStackViaCost.get(), devDemand.get(), devCapacity.get(),
+        devHEdgeLengths.get(), devVEdgeLengths.get(), devUnitOverflowCosts.get(), unitLengthWireCost, unitViaCost,
+        box.lx(), box.ly(), box.width(), box.height(), DIRECTION, N, X, Y, LAYER);
+    gamer->route(pinIndices, numTurns, box);
+    isRoutedNet[netId] = gamer->getIsRouted();
+    if (!isRoutedNet[netId])
+    {
+      utils::log() << "gamer error: route net(id=" << netId << ") failed\n";
+    }
+    checkCudaErrors(cudaMemcpy(devAllRoutes.get() + allRoutesOffset[netId], gamer->getRoutes().get(),
+                               (allRoutesOffset[netId + 1] - allRoutesOffset[netId]) * sizeof(int), cudaMemcpyDeviceToDevice));
+    commitRoutes<<<1, 1>>>(devDemand.get(), devFlag.get(), gamer->getRoutes().get(), 0, DIRECTION, N, X, Y, LAYER);
+  }
+}
+
+void GPUMazeRouter::routeTwoStep(const std::vector<int> &netIndices, int numCoarseTurns, int numFineTurns, int coarseMargin)
+{
+  if (fineGamer == nullptr)
+  {
+    // twostep pipeline init
+    int scaleX = std::min(X / 256, MAX_SCALE);
+    int scaleY = std::min(Y / 256, MAX_SCALE);
+    extractor2D = std::make_unique<Grid2DExtractor>(DIRECTION, N, X, Y, LAYER);
+    extractor2D->setWireCost(devWireCost);
+    scaler2D = std::make_unique<GridScaler2D>(X, Y, scaleX, scaleY);
+    scaler2D->setCost2D(extractor2D->getCost2D());
+    coarseGamer2D = std::make_unique<BasicGamer2D>(scaler2D->getCoarseX(), scaler2D->getCoarseY(), maxNumPins);
+    coarseGamer2D->setCost2D(scaler2D->getCoarseCost2D());
+    fineGamer = std::make_unique<GuidedGamer>(DIRECTION, N, X, Y, LAYER, maxNumPins);
+    fineGamer->setWireCost(devWireCost);
+    fineGamer->setNonStackViaCost(devNonStackViaCost);
+    fineGamer->setUnitViaCost(unitViaCost);
+  }
+
+  // reverse
+  for (auto netId : netIndices)
+  {
+    commitRoutes<<<1, 1>>>(
+        devDemand.get(), devFlag.get(), devAllRoutes.get() + allRoutesOffset[netId],
+        1, DIRECTION, N, X, Y, LAYER);
   }
   // route
   std::vector<int> pinIndices(maxNumPins);
@@ -415,27 +498,6 @@ void GPUMazeRouter::routeTwoStep(const std::vector<int> &netIndices, int numCoar
       scaler2D->getGuideFromRoutes2D(guides2D, routes2D.data());
     }
 
-    // if (netId == 26)
-    // {
-    //   for(int i = 0; i < guides2D.size(); i++)
-    //   {
-    //     const auto b = guides2D[i];
-    //     //    <mxCell id="1hsR5Wi1GT06HaeS9luZ-1" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#000000;strokeColor=none;" vertex="1" parent="1">
-    //     //      <mxGeometry x="16" y="216" width="70" height="3" as="geometry" />
-    //     //    </mxCell>
-    //     printf("<mxCell id=\"guide-%d\" value=\"\" style=\"rounded=0;whiteSpace=wrap;html=1;fillColor=#000000;strokeColor=none;\" vertex=\"1\" parent=\"1\">\n", i);
-    //     printf("<mxGeometry x=\"%d\" y=\"%d\" width=\"%d\" height=\"%d\" as=\"geometry\" />\n", b.lx(), b.ly(), b.width(), b.height());
-    //     printf("</mxCell>\n");
-    //   }
-    //   for (const int idx : pinIndices)
-    //   {
-    //     auto [x, y, z] = idxToXYZ(idx, DIRECTION, N);
-    //     printf("<mxCell id=\"pin-%d\" value=\"\" style=\"rounded=0;whiteSpace=wrap;html=1;fillColor=#FF0000;strokeColor=none;\" vertex=\"1\" parent=\"1\">\n", idx);
-    //     printf("<mxGeometry x=\"%d\" y=\"%d\" width=\"1\" height=\"1\" as=\"geometry\" />\n", x, y);
-    //     printf("</mxCell>\n");
-    //   }
-    // }
-
     // pinIndices的顺序必须与coarsePin2DIndices的一致
     std::sort(pinIndices.begin(), pinIndices.end(), [&](int idx1, int idx2)
               {
@@ -456,6 +518,68 @@ void GPUMazeRouter::routeTwoStep(const std::vector<int> &netIndices, int numCoar
     checkCudaErrors(cudaMemcpy(devAllRoutes.get() + allRoutesOffset[netId], fineGamer->getRoutes().get(),
                                (allRoutesOffset[netId + 1] - allRoutesOffset[netId]) * sizeof(int), cudaMemcpyDeviceToDevice));
     commitRoutes<<<1, 1>>>(devDemand.get(), devFlag.get(), fineGamer->getRoutes().get(), 0, DIRECTION, N, X, Y, LAYER);
+  }
+}
+
+void GPUMazeRouter::routeSparse(const std::vector<int> &netIndices, int numTurns, int interval)
+{
+  if (sparseGamer == nullptr)
+  {
+    sparseGamer = std::make_unique<GuidedGamer>(DIRECTION, N, X, Y, LAYER, maxNumPins);
+    sparseGamer->setWireCost(devWireCost);
+    sparseGamer->setNonStackViaCost(devNonStackViaCost);
+    sparseGamer->setUnitViaCost(unitViaCost);
+  }
+
+  // reverse
+  for (auto netId : netIndices)
+  {
+    commitRoutes<<<1, 1>>>(
+        devDemand.get(), devFlag.get(), devAllRoutes.get() + allRoutesOffset[netId],
+        1, DIRECTION, N, X, Y, LAYER);
+  }
+
+  calculateWireViaCost<<<dim3((X + 31) / 32, (Y + 31) / 32, LAYER), dim3(32, 32, 1)>>>(
+      devWireCost.get(), devNonStackViaCost.get(), devDemand.get(), devCapacity.get(),
+      devHEdgeLengths.get(), devVEdgeLengths.get(), devUnitOverflowCosts.get(), unitLengthWireCost, unitViaCost,
+      0, 0, X, Y, DIRECTION, N, X, Y, LAYER);
+  // route
+  std::vector<int> pinIndices(maxNumPins);
+  std::vector<utils::BoxT<int>> guides2D;
+  for (int i = 0, offset = 0; i < netIndices.size(); i++, offset = (offset + 1) % interval)
+  {
+    int netId = netIndices[i];
+    utils::log() << "routing net(id=" << netId << ")\n";
+    selectAccessPoints(nets[netId], pinIndices);
+    rootIndices[netId] = pinIndices.front();
+
+    guides2D.clear();
+    for (int x = offset; x < X; x += interval)
+      guides2D.emplace_back(x, 0, x + 1, Y);
+    for (int y = offset; y < Y; y += interval)
+      guides2D.emplace_back(0, y, X, y + 1);
+    for (int idx : pinIndices)
+    {
+      auto [x, y, z] = idxToXYZ(idx, DIRECTION, N);
+      guides2D.emplace_back(x, 0, x + 1, Y);
+      guides2D.emplace_back(0, y, X, y + 1);
+    }
+
+    sparseGamer->setGuide2D(guides2D);
+    sparseGamer->route(pinIndices, numTurns);
+    isRoutedNet[netId] = sparseGamer->getIsRouted();
+    if (!isRoutedNet[netId])
+    {
+      utils::log() << "gamer error: route net(id=" << netId << ") failed\n";
+    }
+    checkCudaErrors(cudaMemcpy(devAllRoutes.get() + allRoutesOffset[netId], sparseGamer->getRoutes().get(),
+                               (allRoutesOffset[netId + 1] - allRoutesOffset[netId]) * sizeof(int), cudaMemcpyDeviceToDevice));
+    commitRoutes<<<1, 1>>>(devDemand.get(), devFlag.get(), sparseGamer->getRoutes().get(), 0, DIRECTION, N, X, Y, LAYER);
+    updateWireViaCost<<<1, 1>>>(
+        devWireCost.get(), devNonStackViaCost.get(), sparseGamer->getRoutes().get(), devDemand.get(), devCapacity.get(),
+        devHEdgeLengths.get(), devVEdgeLengths.get(), devUnitOverflowCosts.get(), unitLengthWireCost, unitViaCost,
+        DIRECTION, N, X, Y, LAYER);
+    checkCudaErrors(cudaDeviceSynchronize());
   }
 }
 
