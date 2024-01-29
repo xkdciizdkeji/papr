@@ -12,10 +12,8 @@ public:
   void setWireCost(const cuda_shared_ptr<realT[]> &wireCost) { devWireCost = wireCost; }
   const cuda_shared_ptr<realT[]> &getCost2D() { return devCost2D; }
 
-  void extractCost2D();
-  void extractCost2D(const utils::BoxT<int> &box);
-
-  void extractPin2DIndices(std::vector<int> &pin2DIndices, const std::vector<int> &pinIndices) const;
+  void extract();
+  void extract(const utils::BoxT<int> &box);
 
 private:
   int DIRECTION, N, X, Y, LAYER;

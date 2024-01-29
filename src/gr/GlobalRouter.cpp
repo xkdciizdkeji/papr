@@ -38,89 +38,89 @@ void GlobalRouter::route()
     netIndices.reserve(nets.size());
     for (const auto &net : nets)
         netIndices.push_back(net.getIndex());
-    // // Stage 1: Pattern routing
-    // n1 = netIndices.size();
-    // PatternRoute::readFluteLUT();
-    // log() << "stage 1: pattern routing" << std::endl;
-    // sortNetIndices(netIndices);
-    // for (const int netIndex : netIndices)
-    // {
-    //     PatternRoute patternRoute(nets[netIndex], gridGraph, parameters);
-    //     patternRoute.constructSteinerTree();
-    //     patternRoute.constructRoutingDAG();
-    //     patternRoute.run();
-    //     gridGraph.commitTree(nets[netIndex].getRoutingTree());
-    // }
+    // Stage 1: Pattern routing
+    n1 = netIndices.size();
+    PatternRoute::readFluteLUT();
+    log() << "stage 1: pattern routing" << std::endl;
+    sortNetIndices(netIndices);
+    for (const int netIndex : netIndices)
+    {
+        PatternRoute patternRoute(nets[netIndex], gridGraph, parameters);
+        patternRoute.constructSteinerTree();
+        patternRoute.constructRoutingDAG();
+        patternRoute.run();
+        gridGraph.commitTree(nets[netIndex].getRoutingTree());
+    }
 
-    // netIndices.clear();
-    // for (const auto &net : nets)
-    // {
-    //     int netOverflow = gridGraph.checkOverflow(net.getRoutingTree());
-    //     if (netOverflow > 0)
-    //     {
-    //         netIndices.push_back(net.getIndex());
-    //         netOverflows[net.getIndex()] = netOverflow;
-    //     }
-    // }
-    // log() << netIndices.size() << " / " << nets.size() << " nets have overflows." << std::endl;
-    // logeol();
+    netIndices.clear();
+    for (const auto &net : nets)
+    {
+        int netOverflow = gridGraph.checkOverflow(net.getRoutingTree());
+        if (netOverflow > 0)
+        {
+            netIndices.push_back(net.getIndex());
+            netOverflows[net.getIndex()] = netOverflow;
+        }
+    }
+    log() << netIndices.size() << " / " << nets.size() << " nets have overflows." << std::endl;
+    logeol();
     // printStatistics();
     t1 = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t).count();
     t = std::chrono::high_resolution_clock::now();
 
     // Stage 2: Pattern routing with possible detours
     n2 = netIndices.size();
-//     if (netIndices.size() > 0)
-//     {
-//         log() << "stage 2: pattern routing with possible detours" << std::endl;
-//         GridGraphView<bool> congestionView; // (2d) direction -> x -> y -> has overflow?
-//         gridGraph.extractCongestionView(congestionView);
-//         // for (const int netIndex : netIndices) {
-//         //     GRNet& net = nets[netIndex];
-//         //     gridGraph.commitTree(net.getRoutingTree(), true);
-//         // }
-// #ifndef ENABLE_ISSSORT
-//         sortNetIndices(netIndices);
-// #else
-//         log() << "sort net indices with OFDALD" << std::endl;
-//         sortNetIndicesOFDALD(netIndices, netOverflows);
-//         // sortNetIndicesD(netIndices);
-// #endif
-//         for (const int netIndex : netIndices)
-//         {
-//             GRNet &net = nets[netIndex];
-//             gridGraph.commitTree(net.getRoutingTree(), true);
-//             PatternRoute patternRoute(net, gridGraph, parameters);
-//             patternRoute.constructSteinerTree();
-//             patternRoute.constructRoutingDAG();
-//             patternRoute.constructDetours(congestionView); // KEY DIFFERENCE compared to stage 1
-//             patternRoute.run();
-//             gridGraph.commitTree(net.getRoutingTree());
-//         }
+    if (netIndices.size() > 0)
+    {
+        log() << "stage 2: pattern routing with possible detours" << std::endl;
+        GridGraphView<bool> congestionView; // (2d) direction -> x -> y -> has overflow?
+        gridGraph.extractCongestionView(congestionView);
+        // for (const int netIndex : netIndices) {
+        //     GRNet& net = nets[netIndex];
+        //     gridGraph.commitTree(net.getRoutingTree(), true);
+        // }
+#ifndef ENABLE_ISSSORT
+        sortNetIndices(netIndices);
+#else
+        log() << "sort net indices with OFDALD" << std::endl;
+        sortNetIndicesOFDALD(netIndices, netOverflows);
+        // sortNetIndicesD(netIndices);
+#endif
+        for (const int netIndex : netIndices)
+        {
+            GRNet &net = nets[netIndex];
+            gridGraph.commitTree(net.getRoutingTree(), true);
+            PatternRoute patternRoute(net, gridGraph, parameters);
+            patternRoute.constructSteinerTree();
+            patternRoute.constructRoutingDAG();
+            patternRoute.constructDetours(congestionView); // KEY DIFFERENCE compared to stage 1
+            patternRoute.run();
+            gridGraph.commitTree(net.getRoutingTree());
+        }
 
-//         netIndices.clear();
-//         for (const auto &net : nets)
-//         {
-//             int netOverflow = gridGraph.checkOverflow(net.getRoutingTree());
-//             if (netOverflow > 0)
-//             {
-//                 netIndices.push_back(net.getIndex());
-//                 netOverflows[net.getIndex()] = netOverflow;
-//                 // log() << "netindex: " << net.getIndex() << " netoverflow: " << netOverflow << std::endl;
-//             }
-//         }
-//         log() << netIndices.size() << " / " << nets.size() << " nets have overflows." << std::endl;
-//         logeol();
-//     }
+        netIndices.clear();
+        for (const auto &net : nets)
+        {
+            int netOverflow = gridGraph.checkOverflow(net.getRoutingTree());
+            if (netOverflow > 0)
+            {
+                netIndices.push_back(net.getIndex());
+                netOverflows[net.getIndex()] = netOverflow;
+                // log() << "netindex: " << net.getIndex() << " netoverflow: " << netOverflow << std::endl;
+            }
+        }
+        log() << netIndices.size() << " / " << nets.size() << " nets have overflows." << std::endl;
+        logeol();
+    }
     // printStatistics();
     t2 = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t).count();
     t = std::chrono::high_resolution_clock::now();
 
     // Stage 3: maze routing
     n3 = netIndices.size();
-#ifndef ENABLE_CUDA
     if (netIndices.size() > 0)
     {
+#ifndef ENABLE_CUDA
         log() << "stage 3: maze routing on sparsified routing graph" << std::endl;
         for (const int netIndex : netIndices)
         {
@@ -156,6 +156,11 @@ void GlobalRouter::route()
             gridGraph.updateWireCostView(wireCostView, net.getRoutingTree());
             grid.step();
         }
+#else
+        log() << "stage 3: gpu maze routing\n";
+        GPUMazeRoute mazeRoute(nets, gridGraph, parameters);
+        mazeRoute.run();
+#endif
         netIndices.clear();
         for (const auto &net : nets)
         {
@@ -167,16 +172,6 @@ void GlobalRouter::route()
         log() << netIndices.size() << " / " << nets.size() << " nets have overflows." << std::endl;
         logeol();
     }
-#else
-    if (netIndices.size() > 0)
-    {
-        log() << "stage 3: gpu maze routing\n";
-        GPUMazeRoute mazeRoute(nets, gridGraph, parameters);
-        mazeRoute.run();
-        mazeRoute.getOverflowNetIndices(netIndices);
-        log() << netIndices.size() << " / " << nets.size() << " nets have overflows." << std::endl;
-    }
-#endif
     t3 = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t).count();
     t = std::chrono::high_resolution_clock::now();
 
@@ -424,7 +419,6 @@ void GlobalRouter::getGuides(const GRNet &net, vector<std::pair<std::pair<int, i
         }
         return resource;
     };
-
 }
 
 void GlobalRouter::printStatistics() const
@@ -453,7 +447,7 @@ void GlobalRouter::printStatistics() const
             exit(-1);
         }
         GRTreeNode::preorder(net.getRoutingTree(), [&](std::shared_ptr<GRTreeNode> node)
-        {
+                             {
             for (const auto& child : node->children) {
                 if (node->layerIdx == child->layerIdx) {
                     unsigned direction = gridGraph.getLayerDirection(node->layerIdx);
@@ -580,36 +574,50 @@ void GlobalRouter::write(std::string guide_file)
 }
 
 void GlobalRouter::update_nonstack_via_counter(unsigned net_idx,
-  const std::vector<vector<int>> &via_loc,
-  std::vector< std::vector< std::vector<int> > > &flag,
-  std::vector< std::vector< std::vector<int> > > &nonstack_via_counter) const
+                                               const std::vector<vector<int>> &via_loc,
+                                               std::vector<std::vector<std::vector<int>>> &flag,
+                                               std::vector<std::vector<std::vector<int>>> &nonstack_via_counter) const
 {
-  for(const auto &pp : via_loc) {
-    if(flag[pp[2]][pp[0]][pp[1]] != net_idx) {
-      flag[pp[2]][pp[0]][pp[1]] = net_idx;
+    for (const auto &pp : via_loc)
+    {
+        if (flag[pp[2]][pp[0]][pp[1]] != net_idx)
+        {
+            flag[pp[2]][pp[0]][pp[1]] = net_idx;
 
-      int direction = gridGraph.getLayerDirection(pp[2]);
-      int size = gridGraph.getSize(direction);
-      if(direction == 0) {
-        if ((pp[0] > 0) && (pp[0] < size - 1)) {
-          nonstack_via_counter[pp[2]][pp[0]-1][pp[1]]++;
-          nonstack_via_counter[pp[2]][pp[0]][pp[1]]++;
-        } else if (pp[0] > 0 ) {
-          nonstack_via_counter[pp[2]][pp[0]-1][pp[1]] += 2;
-        } else if (pp[0] < size - 1) {
-          nonstack_via_counter[pp[2]][pp[0]][pp[1]] += 2;
+            int direction = gridGraph.getLayerDirection(pp[2]);
+            int size = gridGraph.getSize(direction);
+            if (direction == 0)
+            {
+                if ((pp[0] > 0) && (pp[0] < size - 1))
+                {
+                    nonstack_via_counter[pp[2]][pp[0] - 1][pp[1]]++;
+                    nonstack_via_counter[pp[2]][pp[0]][pp[1]]++;
+                }
+                else if (pp[0] > 0)
+                {
+                    nonstack_via_counter[pp[2]][pp[0] - 1][pp[1]] += 2;
+                }
+                else if (pp[0] < size - 1)
+                {
+                    nonstack_via_counter[pp[2]][pp[0]][pp[1]] += 2;
+                }
+            }
+            else if (direction == 1)
+            {
+                if ((pp[1] > 0) && (pp[1] < size - 1))
+                {
+                    nonstack_via_counter[pp[2]][pp[0]][pp[1] - 1]++;
+                    nonstack_via_counter[pp[2]][pp[0]][pp[1]]++;
+                }
+                else if (pp[1] > 0)
+                {
+                    nonstack_via_counter[pp[2]][pp[0]][pp[1] - 1] += 2;
+                }
+                else if (pp[1] < size - 1)
+                {
+                    nonstack_via_counter[pp[2]][pp[0]][pp[1]] += 2;
+                }
+            }
         }
-      } else if (direction == 1) {
-        if ((pp[1] > 0) && (pp[1] < size - 1)) {
-          nonstack_via_counter[pp[2]][pp[0]][pp[1]-1]++;
-          nonstack_via_counter[pp[2]][pp[0]][pp[1]]++;
-        } else if (pp[1] > 0 ) {
-          nonstack_via_counter[pp[2]][pp[0]][pp[1]-1] += 2;
-        } else if (pp[1] < size - 1) {
-          nonstack_via_counter[pp[2]][pp[0]][pp[1]] += 2;
-        }
-      }
     }
-
-  }
 }

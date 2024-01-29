@@ -2,19 +2,16 @@
 #include "GRNet.h"
 #include "GridGraph.h"
 
-class GPUMazeRouter;
-
 class GPUMazeRoute
 {
 public:
-  GPUMazeRoute(std::vector<GRNet> &nets, GridGraph &graph, const Parameters &params);
+  GPUMazeRoute(std::vector<GRNet> &nets, GridGraph &gridGraph, const Parameters &parameters);
   ~GPUMazeRoute();
 
   void run();
-  void getOverflowNetIndices(std::vector<int> &netIndices) const;
+
 private:
   const Parameters &parameters;
-  const GridGraph &gridGraph;
-  const std::vector<GRNet> &nets;
-  std::unique_ptr<GPUMazeRouter> router;
+  GridGraph &gridGraph;
+  std::vector<GRNet> &nets;
 };
