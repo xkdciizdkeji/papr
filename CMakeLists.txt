@@ -61,8 +61,10 @@ if(ENABLE_CUDA)
     ${PATH_CUGR}/gamer/GuidedGamer.cuh
     ${PATH_CUGR}/gamer/Grid2DExtractor.cuh
     ${PATH_CUGR}/gamer/GridScaler2D.cuh
+    ${PATH_CUGR}/gamer/GridScaler.cuh
     ${PATH_CUGR}/gamer/GPUMazeRouteBasic.cuh
     ${PATH_CUGR}/gamer/GPUMazeRouteTwostep.cuh
+    ${PATH_CUGR}/gamer/GPUMazeRouteTwostep3D.cuh
   )
   set(CUGR_CUDA_SOURCE_FILE
     ${PATH_CUGR}/gr/GPUMazeRoute.cu
@@ -72,8 +74,10 @@ if(ENABLE_CUDA)
     ${PATH_CUGR}/gamer/GuidedGamer.cu
     ${PATH_CUGR}/gamer/Grid2DExtractor.cu
     ${PATH_CUGR}/gamer/GridScaler2D.cu
+    ${PATH_CUGR}/gamer/GridScaler.cu
     ${PATH_CUGR}/gamer/GPUMazeRouteBasic.cu
     ${PATH_CUGR}/gamer/GPUMazeRouteTwostep.cu
+    ${PATH_CUGR}/gamer/GPUMazeRouteTwostep3D.cu
   )
   list(APPEND CUGR_HEADER_FILES ${CUGR_CUDA_HEADER_FILE})
   list(APPEND CUGR_SOURCE_FILES ${CUGR_CUDA_SOURCE_FILE})

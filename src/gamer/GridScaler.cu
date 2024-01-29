@@ -121,7 +121,7 @@ void GridScaler::scale(const utils::BoxT<int> &coarseBox)
       devCoarseWireCost.get(), devWireCost.get(),
       coarseBox.lx(), coarseBox.ly(), coarseBox.width(), coarseBox.height(),
       coarseN, coarseX, coarseY, scaleX, scaleY, DIRECTION, N, X, Y, LAYER);
-  coarsenWireCost<<<dim3((coarseBox.width() + 31) / 32, (coarseBox.height() + 31) / 32, LAYER), dim3(32, 32, 1)>>>(
+  coarsenViaCost<<<dim3((coarseBox.width() + 31) / 32, (coarseBox.height() + 31) / 32, LAYER), dim3(32, 32, 1)>>>(
       devCoarseViaCost.get(), devViaCost.get(),
       coarseBox.lx(), coarseBox.ly(), coarseBox.width(), coarseBox.height(),
       coarseN, coarseX, coarseY, scaleX, scaleY, DIRECTION, N, X, Y, LAYER);
