@@ -11,7 +11,7 @@
 #include <fstream>
 #include <mutex>
 #include <thread>
-#include "../multithread/tp.cpp"
+// #include "../multithread/tp.cpp"
 // #include <boost/asio/static_thread_pool.hpp>
 // #include <boost/asio.hpp>
 
@@ -37,9 +37,10 @@ void GlobalRouter::route()
     double t1 = 0, t2 = 0, t3 = 0;
 
     auto t = std::chrono::high_resolution_clock::now();
-
     std::ofstream  afile;
     afile.open("time", std::ios::app);
+    // std::ofstream  afile;
+    // afile.open("time", std::ios::app);
 
     vector<int> netIndices;
     vector<int> netOverflows(nets.size());
@@ -52,23 +53,34 @@ void GlobalRouter::route()
     log() << "stage 1: pattern routing" << std::endl;
     sortNetIndices(netIndices);
 
-    // std::ofstream  bfile;
-    // bfile.open("batch", std::ios::app);
-    // for (auto batch:netIndices)
-    // {
-    //     bfile<<nets[batch].getBoundingBox().hp()<<"\n";
-    // }
-    // bfile.close();
-    
     auto t_b_b = std::chrono::high_resolution_clock::now();
     vector<SingleNetRouter> routers;
     routers.reserve(netIndices.size());
-    for (auto id : netIndices) routers.emplace_back(nets[id]);
-    vector<vector<int>> batches = getBatches(routers,netIndices);
-    double t_batch = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t_b_b).count();
+    for (auto id : netIndices)
+        routers.emplace_back(nets[id]);
     
-    //std::cout<<"b:"<<batches.size()<<std::endl;
+    vector<vector<int>> batches = getBatches(routers, netIndices);
+    double t_batch = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t_b_b).count();
+    // std::ofstream outputFile("batches.txt");
+    // if (outputFile.is_open())
+    // {
+    //     for (const auto &batch : batches)
+    //     {
+    //         for (const auto &value : batch)
+    //         {
+    //             outputFile << nets[value].getBoundingBox().hp() << " ";
+    //         }
+    //         outputFile << std::endl;
+    //     }
+    //     outputFile.close();
+    // }
+    // else
+    // {
+    //     // Failed to open the file
+    //     // Handle the error accordingly
+    // }
 
+    // std::cout<<"b:"<<batches.size()<<std::endl;
 
     // for (const int netIndex : netIndices)
     // {
@@ -79,61 +91,43 @@ void GlobalRouter::route()
     //     gridGraph.commitTree(nets[netIndex].getRoutingTree());
     // }
 
-    //std::vector<PatternRoute*> PatternRoutes;
+    // std::vector<PatternRoute*> PatternRoutes;
     auto t_cst_b = std::chrono::high_resolution_clock::now();
-    std::unordered_map<int,PatternRoute> PatternRoutes;
-    for (const int netIndex : netIndices) {
+    std::unordered_map<int, PatternRoute> PatternRoutes;
+    // for output SteinerTree.txt
+    // std::ofstream cfile;
+    // cfile.open("SteinerTree.txt", std::ios::app);
+    // cfile << "[";
+    for (const int netIndex : netIndices)
+    {
         PatternRoute patternRoute(nets[netIndex], gridGraph, parameters);
         patternRoute.constructSteinerTree();
+        // if(SteinerTreeNode::getPythonString(patternRoute.getSteinerTree())!="[]"){
+        //     cfile <<SteinerTreeNode::getPythonString(patternRoute.getSteinerTree())<<","<<"\n";
+        // }
         // patternRoute.constructRoutingDAG();
-        PatternRoutes.insert(std::make_pair(netIndex,patternRoute));
+        PatternRoutes.insert(std::make_pair(netIndex, patternRoute));
     }
+    //cfile << "]";
+    //cfile.close();
     double t_cst = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t_cst_b).count();
 
-    
     auto t_pr_b = std::chrono::high_resolution_clock::now();
-    for (const vector<int>& batch : batches) {
-        runJobsMT(batch.size(),numofThreads, [&](int jobIdx) {
+    for (const vector<int> &batch : batches)
+    {
+        runJobsMT(batch.size(), numofThreads, [&](int jobIdx)
+                  {
             auto patternRoute = PatternRoutes.find(batch[jobIdx])->second;
             patternRoute.constructRoutingDAG();
             patternRoute.run();
-            gridGraph.commitTree(nets[batch[jobIdx]].getRoutingTree());
-        });
+            gridGraph.commitTree(nets[batch[jobIdx]].getRoutingTree()); });
     }
-    gridGraph.clear();
-    for (auto net:nets)
-    {
-        gridGraph.commitTree(net.getRoutingTree());
-    }
-    // for (auto batch:batches)
-    // {
-    //     int z = batch.size() / numofThreads;
-    //     int y = batch.size() % numofThreads;
-    //     //std::cout<<z<<" "<<y<<std::endl;
-    //     std::vector<std::vector<int>> batchforMultithreads;
-    //     batchforMultithreads.resize(numofThreads);
-    //     for (size_t i = 0; i < z; i++)
-    //     {
-    //         for (size_t j = 0; j < numofThreads; j++)
-    //         {
-    //             batchforMultithreads[j].emplace_back(batch[i*numofThreads + j]);
-    //         }
-    //     }
-    //     for (size_t i = 0; i < y; i++)
-    //     {
-    //         batchforMultithreads[i].emplace_back(batch[z*numofThreads + i]);
-    //     }
-    //     runJobsMTnew(batchforMultithreads, [&](int id){
-    //         auto patternRoute = PatternRoutes.find(id)->second;
-    //         patternRoute.run();
-    //         gridGraph.commitTree(nets[id].getRoutingTree());
-    //     });
-    // }
-    // gridGraph.clear();
+    // gridGraph.clearDemand();
     // for (auto net:nets)
     // {
     //     gridGraph.commitTree(net.getRoutingTree());
     // }
+    
     double t_pr = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t_pr_b).count();
 
     // netIndices.clear();
@@ -146,7 +140,7 @@ void GlobalRouter::route()
     //         netOverflows[net.getIndex()] = netOverflow;
     //     }
     // }
-    // //std::cout<<"before:"<<netIndices.size()<<std::endl;
+    // std::cout<<"before:"<<netIndices.size()<<std::endl;
 
     // sortNetIndices(netIndices);
     // for (const int netIndex : netIndices){
@@ -170,11 +164,11 @@ void GlobalRouter::route()
             netOverflows[net.getIndex()] = netOverflow;
         }
     }
-    //std::cout<<"after:"<<netIndices.size()<<std::endl;
-
+    // std::cout<<"after:"<<netIndices.size()<<std::endl;
+    afile << netIndices.size() << " ";
     log() << netIndices.size() << " / " << nets.size() << " nets have overflows." << std::endl;
     logeol();
-    afile<<netIndices.size()<<" ";
+    // afile<<netIndices.size()<<" ";
     // printStatistics();
     t1 = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t).count();
     t = std::chrono::high_resolution_clock::now();
@@ -197,17 +191,149 @@ void GlobalRouter::route()
         sortNetIndicesOFDALD(netIndices, netOverflows);
         // sortNetIndicesD(netIndices);
 #endif
+        // for (const int netIndex : netIndices)
+        // {
+        //     GRNet &net = nets[netIndex];
+        //     gridGraph.commitTree(net.getRoutingTree(), true);
+        //     PatternRoute patternRoute(net, gridGraph, parameters);
+        //     patternRoute.constructSteinerTree();
+        //     patternRoute.constructRoutingDAG();
+        //     patternRoute.constructDetours(congestionView); // KEY DIFFERENCE compared to stage 1
+        //     patternRoute.run();
+        //     gridGraph.commitTree(net.getRoutingTree());
+        // }
+
+        routers.clear();
+        batches.clear();
+        PatternRoutes.clear();
+    
+        // log()<<"routers size:"<<routers.size()<<std::endl;
+        // log()<<"batches size:"<<batches.size()<<std::endl;
+        // log()<<"PatternRoutes size:"<<PatternRoutes.size()<<std::endl;
+        routers.reserve(netIndices.size());
+        for (auto id : netIndices)
+            routers.emplace_back(nets[id]);
+        batches = getBatches(routers, netIndices);
+
+        // std::ofstream  aafile;
+        // aafile.open("batch", std::ios::app);
+        
+        // for (auto batch: batches)
+        // {
+        //     for (auto id: batch)
+        //     {
+        //         aafile<<nets[id].getBoundingBox()<<" ";
+        //     }
+        //     aafile<<"\n";
+        // }
         for (const int netIndex : netIndices)
         {
             GRNet &net = nets[netIndex];
-            gridGraph.commitTree(net.getRoutingTree(), true);
+            // gridGraph.commitTree(net.getRoutingTree(), true);
             PatternRoute patternRoute(net, gridGraph, parameters);
             patternRoute.constructSteinerTree();
+            // patternRoute.constructRoutingDAG();
+            // patternRoute.constructDetours(congestionView); // KEY DIFFERENCE compared to stage 1
+            PatternRoutes.insert(std::make_pair(netIndex, patternRoute));   
+        }
+        // // log()<<"routers size1:"<<routers.size()<<std::endl;
+        // // log()<<"batches size1:"<<batches.size()<<std::endl;
+        // // log()<<"PatternRoutes size1:"<<PatternRoutes.size()<<std::endl;
+
+        // // std::ofstream outputFile("batches.txt");
+        // // if (outputFile.is_open())
+        // // {
+        // //     for (const auto &batch : batches)
+        // //     {
+        // //         for (const auto &value : batch)
+        // //         {
+        // //             outputFile << value << " ";
+        // //         }
+        // //         outputFile << std::endl;
+        // //     }
+        // //     outputFile.close();
+        // // }
+        // // else
+        // // {
+        // //     // Failed to open the file
+        // //     // Handle the error accordingly
+        // // }
+
+        //std::mutex mtx;
+        for (const vector<int> &batch : batches)
+        {
+            runJobsMT(batch.size(), numofThreads, [&](int jobIdx)
+                      {
+            GRNet &net = nets[batch[jobIdx]];
+            gridGraph.commitTree(net.getRoutingTree(), true);
+            auto patternRoute = PatternRoutes.find(batch[jobIdx])->second;
             patternRoute.constructRoutingDAG();
             patternRoute.constructDetours(congestionView); // KEY DIFFERENCE compared to stage 1
             patternRoute.run();
-            gridGraph.commitTree(net.getRoutingTree());
+            //mtx.lock();
+            gridGraph.commitTree(net.getRoutingTree()); 
+            //mtx.unlock();
+            });
         }
+
+        // std::vector<std::vector<std::vector<GraphEdge>>> old_demand;
+        // std::vector<std::vector<std::vector<GraphEdge>>> new_demand;
+        // std::vector<double> result;
+        // std::ofstream  dfile;
+        // dfile.open("demand", std::ios::app);
+        // old_demand = gridGraph.get(); 
+        // gridGraph.clearDemand();
+        // for (auto net:nets)
+        // {
+        //     gridGraph.commitTree(net.getRoutingTree());
+        // }
+        // new_demand = gridGraph.get();
+        // int count1 = 0;
+        // for (size_t i = 0; i < old_demand.size(); i++)
+        // {
+        //     for (size_t j = 0; j < old_demand[i].size(); j++)
+        //     {
+        //         for (size_t k = 0; k < old_demand[i][j].size(); k++)
+        //         {
+        //             result.emplace_back(new_demand[i][j][k].demand - old_demand[i][j][k].demand);
+        //             count1 ++;
+        //         }
+        //     }
+        // }
+        
+        // dfile<<"total_demand_num:"<<count1<<std::endl;
+        // double count2=0;
+        // int total_num=0;
+        // for (auto i:result)
+        // {
+        //     total_num += i;
+        //     // if (i > 0)
+        //     // {
+        //     //     total_num += i;
+        //     if(i !=0) 
+        //     {dfile<<i<<" ";
+        //     count2 ++;}
+        //     // }else if (i < 0)
+        //     // {
+        //     //     std::cout<<"negative"<<"\n";
+        //     // }
+        // }
+        // dfile<<std::endl;
+        // dfile<<"wrong_demand_num:"<<count2<<std::endl;
+        // dfile<<"average_wrong_value"<<total_num/count2<<std::endl;
+        // std::cout<<"num"<<std::endl;
+        // dfile.close();
+        // std::cin.get();
+
+        // gridGraph.clearDemand();
+        // for (auto net : nets)
+        // {
+        //     gridGraph.commitTree(net.getRoutingTree());
+        // }
+
+        routers.clear();
+        batches.clear();
+        PatternRoutes.clear();
 
         netIndices.clear();
         for (const auto &net : nets)
@@ -220,9 +346,11 @@ void GlobalRouter::route()
                 // log() << "netindex: " << net.getIndex() << " netoverflow: " << netOverflow << std::endl;
             }
         }
+
+        afile << netIndices.size() << " ";
         log() << netIndices.size() << " / " << nets.size() << " nets have overflows." << std::endl;
         logeol();
-        afile<<netIndices.size()<<" ";
+        // afile<<netIndices.size()<<" ";
     }
     // printStatistics();
     t2 = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t).count();
@@ -276,32 +404,19 @@ void GlobalRouter::route()
                 netIndices.push_back(net.getIndex());
             }
         }
+        afile << netIndices.size() << " ";
         log() << netIndices.size() << " / " << nets.size() << " nets have overflows." << std::endl;
         logeol();
-        afile<<netIndices.size()<<" ";
+        // afile<<netIndices.size()<<" ";
     }
 #else
     if (netIndices.size() > 0)
     {
-        std::vector<bool> isGamerRoutedNet(nets.size(), false);
         log() << "stage 3: gpu maze routing\n";
-        GPUMazeRoute gamer(nets, gridGraph, parameters);
-        log() << "gamer init. overflow net: " << netIndices.size() << "/" << nets.size() << "\n";
-        for (int iter = 1; iter <= 3 && netIndices.size() > 0; iter++)
-        {
-            gamer.route(netIndices, 3 + iter, 10 * iter);
-            for (auto netId : netIndices)
-                isGamerRoutedNet[netId] = true;
-            gamer.getOverflowNetIndices(netIndices);
-            log() << "gamer iter " << iter << " overflow net: " << netIndices.size() << "/" << nets.size() << "\n";
-        }
-        netIndices.clear();
-        for (int netId = 0; netId < nets.size(); netId++)
-            if (isGamerRoutedNet[netId])
-                netIndices.push_back(netId);
-        log() << "commiting gamer's result ...\n";
-        gamer.commit(netIndices);
-        log() << "commiting done\n";
+        GPUMazeRoute mazeRoute(nets, gridGraph, parameters);
+        mazeRoute.run();
+        mazeRoute.getOverflowNetIndices(netIndices);
+        log() << netIndices.size() << " / " << nets.size() << " nets have overflows." << std::endl;
     }
 #endif
     t3 = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t).count();
@@ -312,8 +427,9 @@ void GlobalRouter::route()
           << std::setprecision(3) << std::fixed << t1 << " s, "
           << std::setprecision(3) << std::fixed << t2 << " s, "
           << std::setprecision(3) << std::fixed << t3 << " s\n";
-    afile<<t_batch<<" "<<t_cst<<" "<<t_pr<<" ";
-    afile<<t1<<" "<<t2<<" "<<t3<<" ";
+    
+    afile<< t_batch << " " << t_cst << " " << t_pr << " ";
+    afile<< t1 << " " << t2 << " " << t3 << " ";
     afile.close();
     printStatistics();
     if (parameters.write_heatmap)
@@ -553,7 +669,6 @@ void GlobalRouter::getGuides(const GRNet &net, vector<std::pair<std::pair<int, i
         }
         return resource;
     };
-
 }
 
 void GlobalRouter::printStatistics() const
@@ -582,7 +697,7 @@ void GlobalRouter::printStatistics() const
             exit(-1);
         }
         GRTreeNode::preorder(net.getRoutingTree(), [&](std::shared_ptr<GRTreeNode> node)
-        {
+                             {
             for (const auto& child : node->children) {
                 if (node->layerIdx == child->layerIdx) {
                     unsigned direction = gridGraph.getLayerDirection(node->layerIdx);
@@ -711,85 +826,120 @@ void GlobalRouter::write(std::string guide_file)
 }
 
 void GlobalRouter::update_nonstack_via_counter(unsigned net_idx,
-  const std::vector<vector<int>> &via_loc,
-  std::vector< std::vector< std::vector<int> > > &flag,
-  std::vector< std::vector< std::vector<int> > > &nonstack_via_counter) const
+                                               const std::vector<vector<int>> &via_loc,
+                                               std::vector<std::vector<std::vector<int>>> &flag,
+                                               std::vector<std::vector<std::vector<int>>> &nonstack_via_counter) const
 {
-  for(const auto &pp : via_loc) {
-    if(flag[pp[2]][pp[0]][pp[1]] != net_idx) {
-      flag[pp[2]][pp[0]][pp[1]] = net_idx;
+    for (const auto &pp : via_loc)
+    {
+        if (flag[pp[2]][pp[0]][pp[1]] != net_idx)
+        {
+            flag[pp[2]][pp[0]][pp[1]] = net_idx;
 
-      int direction = gridGraph.getLayerDirection(pp[2]);
-      int size = gridGraph.getSize(direction);
-      if(direction == 0) {
-        if ((pp[0] > 0) && (pp[0] < size - 1)) {
-          nonstack_via_counter[pp[2]][pp[0]-1][pp[1]]++;
-          nonstack_via_counter[pp[2]][pp[0]][pp[1]]++;
-        } else if (pp[0] > 0 ) {
-          nonstack_via_counter[pp[2]][pp[0]-1][pp[1]] += 2;
-        } else if (pp[0] < size - 1) {
-          nonstack_via_counter[pp[2]][pp[0]][pp[1]] += 2;
+            int direction = gridGraph.getLayerDirection(pp[2]);
+            int size = gridGraph.getSize(direction);
+            if (direction == 0)
+            {
+                if ((pp[0] > 0) && (pp[0] < size - 1))
+                {
+                    nonstack_via_counter[pp[2]][pp[0] - 1][pp[1]]++;
+                    nonstack_via_counter[pp[2]][pp[0]][pp[1]]++;
+                }
+                else if (pp[0] > 0)
+                {
+                    nonstack_via_counter[pp[2]][pp[0] - 1][pp[1]] += 2;
+                }
+                else if (pp[0] < size - 1)
+                {
+                    nonstack_via_counter[pp[2]][pp[0]][pp[1]] += 2;
+                }
+            }
+            else if (direction == 1)
+            {
+                if ((pp[1] > 0) && (pp[1] < size - 1))
+                {
+                    nonstack_via_counter[pp[2]][pp[0]][pp[1] - 1]++;
+                    nonstack_via_counter[pp[2]][pp[0]][pp[1]]++;
+                }
+                else if (pp[1] > 0)
+                {
+                    nonstack_via_counter[pp[2]][pp[0]][pp[1] - 1] += 2;
+                }
+                else if (pp[1] < size - 1)
+                {
+                    nonstack_via_counter[pp[2]][pp[0]][pp[1]] += 2;
+                }
+            }
         }
-      } else if (direction == 1) {
-        if ((pp[1] > 0) && (pp[1] < size - 1)) {
-          nonstack_via_counter[pp[2]][pp[0]][pp[1]-1]++;
-          nonstack_via_counter[pp[2]][pp[0]][pp[1]]++;
-        } else if (pp[1] > 0 ) {
-          nonstack_via_counter[pp[2]][pp[0]][pp[1]-1] += 2;
-        } else if (pp[1] < size - 1) {
-          nonstack_via_counter[pp[2]][pp[0]][pp[1]] += 2;
-        }
-      }
     }
-
-  }
 }
 
-vector<vector<int>> GlobalRouter::getBatches(vector<SingleNetRouter>& routers, const vector<int>& netsToRoute) {
+vector<vector<int>> GlobalRouter::getBatches(vector<SingleNetRouter> &routers, const vector<int> &netsToRoute)
+{
     vector<int> batch(netsToRoute.size());
+    vector<vector<int>> batches;
     if (numofThreads == 1)
     {
-        vector<vector<int>> batches;
         batches.emplace_back(netsToRoute);
         return batches;
     }
-    
-    for (int i = 0; i < netsToRoute.size(); i++) batch[i] = i;
+    else
+    {
+        // runJobsMT(netsToRoute.size(), numofThreads, [&](int jobIdx)
+        //           {
+        // auto& router = routers[jobIdx];
+        // const auto mergedPinAccessBoxes = nets[netsToRoute[jobIdx]].getPinAccessPoints();
+        // //const auto mergedPinAccessBoxes = router.grNet.getPinAccessPoints();
+        // utils::IntervalT<long int> xIntvl, yIntvl;
+        // for (auto& points : mergedPinAccessBoxes) {
+        //     for (auto& point : points) {
+        //         xIntvl.Update(point[0]);
+        //         yIntvl.Update(point[1]);
+        //     }
+        // }
+        // router.guides.emplace_back(0, xIntvl, yIntvl); });
 
-    runJobsMT(batch.size(), numofThreads, [&](int jobIdx) {
-        auto& router = routers[batch[jobIdx]];
-        const auto mergedPinAccessBoxes = nets[netsToRoute[jobIdx]].getPinAccessPoints();
-        utils::IntervalT<long int> xIntvl, yIntvl;
-        for (auto& points : mergedPinAccessBoxes) {
-            for (auto& point : points) {
-                xIntvl.Update(point[0]);
-                yIntvl.Update(point[1]);
-            }
-        }
-        router.guides.emplace_back(0, xIntvl, yIntvl);
-    });
-    Scheduler scheduler(routers,gridGraph.getNumLayers());
-    const vector<vector<int>>& batches = scheduler.scheduleOrderEq(numofThreads);
+        runJobsMT(netsToRoute.size(), numofThreads, [&](int jobIdx) {
+            auto& router = routers[jobIdx];
+            auto& net = router.grNet;
+            utils::IntervalT<long int> xIntvl, yIntvl;
+            xIntvl.low = DBU(net.getBoundingBox().x.low);
+            xIntvl.high = DBU(net.getBoundingBox().x.high);
+            yIntvl.low = DBU(net.getBoundingBox().y.low);
+            yIntvl.high = DBU(net.getBoundingBox().y.high);
+            router.guides.emplace_back(0, xIntvl, yIntvl);
+        });
 
+        Scheduler scheduler(routers, gridGraph.getNumLayers());
+        batches = scheduler.scheduleOrderEq(numofThreads, netsToRoute);
+    }
     return batches;
 }
 
-void GlobalRouter::runJobsMT(int numJobs, int numofThreads, const std::function<void(int)>& handle) {
+void GlobalRouter::runJobsMT(int numJobs, int numofThreads, const std::function<void(int)> &handle)
+{
     int numThreads = min(numJobs, numofThreads);
-    if (numThreads <= 1) {
-        for (int i = 0; i < numJobs; ++i) {
+    if (numThreads <= 1)
+    {
+        for (int i = 0; i < numJobs; ++i)
+        {
             handle(i);
         }
-    } else {
+    }
+    else
+    {
         int globalJobIdx = 0;
         std::mutex mtx;
-        auto thread_func = [&](int threadIdx) {
+        auto thread_func = [&](int threadIdx)
+        {
             int jobIdx;
-            while (true) {
+            while (true)
+            {
                 mtx.lock();
                 jobIdx = globalJobIdx++;
                 mtx.unlock();
-                if (jobIdx >= numJobs) {
+                if (jobIdx >= numJobs)
+                {
                     break;
                 }
                 handle(jobIdx);
@@ -797,10 +947,12 @@ void GlobalRouter::runJobsMT(int numJobs, int numofThreads, const std::function<
         };
 
         std::thread threads[numThreads];
-        for (int i = 0; i < numThreads; i++) {
+        for (int i = 0; i < numThreads; i++)
+        {
             threads[i] = std::thread(thread_func, i);
         }
-        for (int i = 0; i < numThreads; i++) {
+        for (int i = 0; i < numThreads; i++)
+        {
             threads[i].join();
         }
     }
@@ -815,18 +967,22 @@ void GlobalRouter::runJobsMT(int numJobs, int numofThreads, const std::function<
 //         });
 //    }
 
-void GlobalRouter::runJobsMTnew(std::vector<std::vector<int>> batches, const std::function<void(int)>& handle) {
-    auto thread_func = [&](std::vector<int> batch) {
-        for (auto id:batch)
+void GlobalRouter::runJobsMTnew(std::vector<std::vector<int>> batches, const std::function<void(int)> &handle)
+{
+    auto thread_func = [&](std::vector<int> batch)
+    {
+        for (auto id : batch)
         {
             handle(id);
         }
     };
     std::thread threads[numofThreads];
-    for (int i = 0; i < numofThreads; i++) {
-        threads[i] = std::thread(thread_func,batches[i]);
+    for (int i = 0; i < numofThreads; i++)
+    {
+        threads[i] = std::thread(thread_func, batches[i]);
     }
-    for (int i = 0; i < numofThreads; i++) {
+    for (int i = 0; i < numofThreads; i++)
+    {
         threads[i].join();
     }
 }

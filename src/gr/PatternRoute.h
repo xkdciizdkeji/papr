@@ -55,6 +55,7 @@ public:
     void constructDetours(GridGraphView<bool>& congestionView);
     void run();
     void setSteinerTree(std::shared_ptr<SteinerTreeNode> tree) { steinerTree = tree; }
+    std::shared_ptr<SteinerTreeNode> getSteinerTree() { return steinerTree; }
 
     std::shared_ptr<SteinerTreeNode> getsT() { return steinerTree;}
     std::shared_ptr<PatternRoutingNode> getrT() { return routingDag;}

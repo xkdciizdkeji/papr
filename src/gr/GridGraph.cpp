@@ -435,7 +435,7 @@ void GridGraph::commitNonStackVia(const int layerIndex, const utils::PointT<int>
             if ((loc[1] > 0) && (loc[1] < size - 1))
             {
                 utils::PointT<int> relaLoc = {loc[0], loc[1] - 1};
-                commit(layerIndex, relaLoc, 0.5);
+                commit(layerIndex, relaLoc, -0.5);
                 commit(layerIndex, loc, -0.5);
             }
             else if (loc[1] > 0)

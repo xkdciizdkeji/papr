@@ -13,7 +13,8 @@ using RTrees = std::vector<bgi::rtree<std::pair<boostBox, int>, bgi::linear<16>>
 class Scheduler {
 public:
     Scheduler(const std::vector<SingleNetRouter>& routersToExec,int layer) : routers(routersToExec),layer_num(layer){}
-    std::vector<std::vector<int>>& scheduleOrderEq(int numofThreads);
+    // std::vector<std::vector<int>>& scheduleOrderEq(int numofThreads);
+    std::vector<std::vector<int>>& scheduleOrderEq(int numofThread, const std::vector<int>& netsToRoute);
     int layer_num;
 
 private:
