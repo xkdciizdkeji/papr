@@ -65,7 +65,7 @@ CostT GridGraph::getWireCost(const int layerIndex, const utils::PointT<int> lowe
     const auto &edge = graphEdges[layerIndex][lower.x][lower.y];
     CostT slope = edge.capacity > 0.f ? 0.5f : 1.5f;
     CostT cost = edgeLength * unit_length_wire_cost +
-                 (50*unit_overflow_costs[layerIndex]) * exp(slope * (edge.demand - edge.capacity)) * (exp(slope) - 1);
+                 unit_overflow_costs[layerIndex] * exp(slope * (edge.demand - edge.capacity)) * (exp(slope) - 1);
     return cost;
 }
 
@@ -127,13 +127,13 @@ CostT GridGraph::getNonStackViaCost(const int layerIndex, const utils::PointT<in
     {
         const auto &rightEdge = graphEdges[layerIndex][x][y];
         CostT rightSlope = rightEdge.capacity > 0.f ? 0.5f : 1.5f;
-        return (50*unit_overflow_costs[layerIndex]) * std::exp(rightSlope * (rightEdge.demand - rightEdge.capacity)) * (std::exp(rightSlope) - 1);
+        return unit_overflow_costs[layerIndex] * std::exp(rightSlope * (rightEdge.demand - rightEdge.capacity)) * (std::exp(rightSlope) - 1);
     }
     else if (isHorizontal ? (x == xSize - 1) : (y == ySize - 1))
     {
         const auto &leftEdge = graphEdges[layerIndex][x - isHorizontal][y - !isHorizontal];
         CostT leftSlope = leftEdge.capacity > 0.f ? 0.5f : 1.5f;
-        return (50*unit_overflow_costs[layerIndex]) * std::exp(leftSlope * (leftEdge.demand - leftEdge.capacity)) * (std::exp(leftSlope) - 1);
+        return unit_overflow_costs[layerIndex] * std::exp(leftSlope * (leftEdge.demand - leftEdge.capacity)) * (std::exp(leftSlope) - 1);
     }
     else
     {
@@ -141,8 +141,8 @@ CostT GridGraph::getNonStackViaCost(const int layerIndex, const utils::PointT<in
         CostT rightSlope = rightEdge.capacity > 0.f ? 0.5f : 1.5f;
         const auto &leftEdge = graphEdges[layerIndex][x - isHorizontal][y - !isHorizontal];
         CostT leftSlope = leftEdge.capacity > 0.f ? 0.5f : 1.5f;
-        return (50*unit_overflow_costs[layerIndex]) * std::exp(rightSlope * (rightEdge.demand - rightEdge.capacity)) * (std::exp(0.5f * rightSlope) - 1) +
-               (50*unit_overflow_costs[layerIndex]) * std::exp(leftSlope * (leftEdge.demand - leftEdge.capacity)) * (std::exp(0.5f * leftSlope) - 1);
+        return unit_overflow_costs[layerIndex] * std::exp(rightSlope * (rightEdge.demand - rightEdge.capacity)) * (std::exp(0.5f * rightSlope) - 1) +
+               unit_overflow_costs[layerIndex] * std::exp(leftSlope * (leftEdge.demand - leftEdge.capacity)) * (std::exp(0.5f * leftSlope) - 1);
     }
 }
 

@@ -328,36 +328,36 @@ void GlobalRouter::route()
     {
 #ifndef ENABLE_CUDA
         log() << "stage 3: maze routing on sparsified routing graph" << std::endl;
-//         for (const int netIndex : netIndices)
-//         {
-//             GRNet &net = nets[netIndex];
-//             gridGraph.commitTree(net.getRoutingTree(), true);
-//         }
-//         GridGraphView<CostT> wireCostView;
-//         gridGraph.extractWireCostView(wireCostView);
-// #ifndef ENABLE_ISSSORT
-//         sortNetIndices(netIndices);
-// #else
-//         log() << "sort net indices with OFDALD" << std::endl;
+        for (const int netIndex : netIndices)
+        {
+            GRNet &net = nets[netIndex];
+            gridGraph.commitTree(net.getRoutingTree(), true);
+        }
+        GridGraphView<CostT> wireCostView;
+        gridGraph.extractWireCostView(wireCostView);
+#ifndef ENABLE_ISSSORT
+        sortNetIndices(netIndices);
+#else
+        log() << "sort net indices with OFDALD" << std::endl;
         sortNetIndicesOFDALD(netIndices, netOverflows);
         // sortNetIndicesOFDALI(netIndices, netOverflows);
-// #endif
-//         SparseGrid grid(10, 10, 0, 0);
-//         for (const int netIndex : netIndices)
-//         {
-//             GRNet &net = nets[netIndex];
-//             // gridGraph.commitTree(net.getRoutingTree(), true);
-//             // gridGraph.updateWireCostView(wireCostView, net.getRoutingTree());
-//             MazeRoute mazeRoute(net, gridGraph, parameters);
-//             mazeRoute.constructSparsifiedGraph(wireCostView, grid);
-//             mazeRoute.run();
-//             std::shared_ptr<SteinerTreeNode> tree = mazeRoute.getSteinerTree();
-//             assert(tree != nullptr);
+#endif
+        SparseGrid grid(10, 10, 0, 0);
+        for (const int netIndex : netIndices)
+        {
+            GRNet &net = nets[netIndex];
+            // gridGraph.commitTree(net.getRoutingTree(), true);
+            // gridGraph.updateWireCostView(wireCostView, net.getRoutingTree());
+            MazeRoute mazeRoute(net, gridGraph, parameters);
+            mazeRoute.constructSparsifiedGraph(wireCostView, grid);
+            mazeRoute.run();
+            std::shared_ptr<SteinerTreeNode> tree = mazeRoute.getSteinerTree();
+            assert(tree != nullptr);
 
-//             PatternRoute patternRoute(net, gridGraph, parameters);
-//             patternRoute.setSteinerTree(tree);
-//             patternRoute.constructRoutingDAG();
-//             patternRoute.run();
+            PatternRoute patternRoute(net, gridGraph, parameters);
+            patternRoute.setSteinerTree(tree);
+            patternRoute.constructRoutingDAG();
+            patternRoute.run();
 
             gridGraph.commitTree(net.getRoutingTree());
             gridGraph.updateWireCostView(wireCostView, net.getRoutingTree());
@@ -773,12 +773,11 @@ void GlobalRouter::printStatistics() const
     double wireCost = wireLength * unit_length_wire_cost;
     double viaCost = viaCount * unit_via_cost * via_cost_scale;
     double overflowCost = overflow_cost * overflow_cost_scale;
-    double totalCost = wireCost + viaCost + 50*overflowCost;
+    double totalCost = wireCost + viaCost + overflowCost;
 
     log() << "wire cost:                " << wireCost << std::endl;
     log() << "via cost:                 " << viaCost << std::endl;
     log() << "overflow cost:            " << overflowCost << std::endl;
-    log() << "overflow cost*50:            " << overflowCost*50 << std::endl;
     log() << "total cost(ispd24 score): " << totalCost << std::endl;
     // std::ofstream  afile;
     // afile.open("time", std::ios::app);
