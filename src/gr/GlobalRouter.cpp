@@ -357,7 +357,7 @@ void GlobalRouter::route()
             }
         }
 
-        afile << netIndices.size() << " ";
+        // afile << netIndices.size() << " ";
         log() << netIndices.size() << " / " << nets.size() << " nets have overflows." << std::endl;
         logeol();
         // afile<<netIndices.size()<<" ";
@@ -420,7 +420,7 @@ void GlobalRouter::route()
                 netIndices.push_back(net.getIndex());
             }
         }
-        afile << netIndices.size() << " ";
+        // afile << netIndices.size() << " ";
         log() << netIndices.size() << " / " << nets.size() << " nets have overflows." << std::endl;
         logeol();
     }
