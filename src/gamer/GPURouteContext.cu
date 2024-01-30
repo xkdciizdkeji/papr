@@ -294,7 +294,7 @@ void GPURouteContext::updateCost(const utils::BoxT<int> &box)
       box.lx(), box.ly(), box.width(), box.height(), DIRECTION, N, X, Y, LAYER);
 }
 
-void GPURouteContext::getOverflowAndOpenIndices(std::vector<int> &netIndices) const
+void GPURouteContext::getOverflowAndOpenNetIndices(std::vector<int> &netIndices) const
 {
   auto devIsOverflowNet = cuda_make_unique<int[]>(nets.size());
   markOverflowNet<<<(nets.size() + 1023) / 1024, 1024>>>(

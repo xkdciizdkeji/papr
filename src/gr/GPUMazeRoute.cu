@@ -24,7 +24,7 @@ void GPUMazeRoute::run()
 
   log() << "gamer info. routing ...\n";
   std::vector<int> netIndices{ 1173 };
-  context->getOverflowAndOpenIndices(netIndices);
+  context->getOverflowAndOpenNetIndices(netIndices);
   // netIndices.resize(500);
   // router->run(netIndices, 8, 10);
   router->run(netIndices, 2, 8, 10);

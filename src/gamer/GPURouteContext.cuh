@@ -31,7 +31,7 @@ public:
   void updateCost(const utils::BoxT<int> &box);
   void reverse(int netId);
   void commit(int netId, int rootIdx, const cuda_shared_ptr<int[]> &routes);
-  void getOverflowAndOpenIndices(std::vector<int> &netIndices) const;
+  void getOverflowAndOpenNetIndices(std::vector<int> &netIndices) const;
   void applyToCpu(const std::vector<int> &netIndices);
 
 private:

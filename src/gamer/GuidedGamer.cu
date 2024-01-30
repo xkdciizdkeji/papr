@@ -51,7 +51,7 @@ __global__ static void packViaToSegs(realT *costAtViaseg, int *posAtViaseg, int 
     int pos = idxPosMap[idx];
     locAtRow[pos] = offset + i;
     posAtViaseg[offset + i] = pos;
-    costAtViaseg[offset + i] = (i == 0 ? INFINITY_DISTANCE : nonStackViaCost[idx]);
+    costAtViaseg[offset + i] = nonStackViaCost[idx];
   }
 }
 
