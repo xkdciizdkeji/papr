@@ -421,6 +421,29 @@ void GlobalRouter::getGuides(const GRNet &net, vector<std::pair<std::pair<int, i
     };
 }
 
+void GlobalRouter::getGuide(const GRNet &net, std::vector<std::array<int, 6>> &guide)
+{
+    guide.clear();
+    auto tree = net.getRoutingTree();
+    if(tree == nullptr)
+        return;
+    else if(tree->children.size() == 0)
+        guide.push_back({ tree->x, tree->y, tree->layerIdx, tree->x, tree->y, tree->layerIdx });
+    else
+        GRTreeNode::preorder(tree, [&](std::shared_ptr<GRTreeNode> node) {
+            for(const auto &child : node->children) {
+                guide.push_back({ 
+                    std::min(node->x, child->x),
+                    std::min(node->y, child->y),
+                    std::min(node->layerIdx, child->layerIdx),
+                    std::max(node->x, child->x),
+                    std::max(node->y, child->y),
+                    std::max(node->layerIdx, child->layerIdx),
+                });
+            }
+        });
+}
+
 void GlobalRouter::printStatistics() const
 {
     log() << "routing statistics" << std::endl;
@@ -547,23 +570,30 @@ void GlobalRouter::write(std::string guide_file)
     areaOfPinPatches = 0;
     areaOfWirePatches = 0;
     std::stringstream ss;
+    std::vector<std::array<int, 6>> guide;
     for (const GRNet &net : nets)
     {
-        vector<std::pair<std::pair<int, int>, utils::BoxT<int>>> guides;
-        getGuides(net, guides);
+        // vector<std::pair<std::pair<int, int>, utils::BoxT<int>>> guides;
+        // getGuides(net, guides);
+        // ss << net.getName() << std::endl;
+        // ss << "(" << std::endl;
+        // for (const auto &guide : guides)
+        // {
+        //     ss << guide.second.x.low << " "
+        //        << guide.second.y.low << " "
+        //        << guide.first.first << " "
+        //        << guide.second.x.high << " "
+        //        << guide.second.y.high << " "
+        //        << guide.first.second << std::endl;
+        // }
+        // ss << ")" << std::endl;
 
+        getGuide(net, guide);
         ss << net.getName() << std::endl;
-        ss << "(" << std::endl;
-        for (const auto &guide : guides)
-        {
-            ss << guide.second.x.low << " "
-               << guide.second.y.low << " "
-               << guide.first.first << " "
-               << guide.second.x.high << " "
-               << guide.second.y.high << " "
-               << guide.first.second << std::endl;
-        }
-        ss << ")" << std::endl;
+        ss << "(\n";
+        for (const auto &[lx, ly, lz, hx, hy, hz] : guide)
+            ss << lx << " " << ly << " " << lz << " " << hx << " " << hy << " " << hz << "\n";
+        ss << ")\n";
     }
     log() << std::endl;
     log() << "writing output..." << std::endl;
