@@ -3,6 +3,7 @@
 #define GPU_ROUTER_GUIDED_GAMER_H
 
 #include "gamer_utils.cuh"
+#include <array>
 
 class GuidedGamer
 {
@@ -15,7 +16,7 @@ public:
   const cuda_shared_ptr<int[]> &getRoutes() const { return devRoutes; }
   bool getIsRouted() const;
 
-  void setGuide2D(const std::vector<utils::BoxT<int>> &guide2D);
+  void setGuide(const std::vector<std::array<int, 6>> &guide);
   void reserve(int nWires, int nRows, int nLongWires, int nWorkplace, int nViasegs);
 
   void route(const std::vector<int> &pinIndices, int numTurns);

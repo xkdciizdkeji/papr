@@ -273,9 +273,9 @@ bool BasicGamer::getIsRouted() const
                      { return x & y; });
 }
 
-void BasicGamer::route(const std::vector<int> &pinIndices, int sweepTurns)
+void BasicGamer::route(const std::vector<int> &pinIndices, int numTurns)
 {
-  route(pinIndices, sweepTurns, utils::BoxT<int>(0, 0, X, Y));
+  route(pinIndices, numTurns, utils::BoxT<int>(0, 0, X, Y));
 }
 
 void BasicGamer::route(const std::vector<int> &pinIndices, int numTurns, const utils::BoxT<int> &box)
@@ -319,6 +319,5 @@ void BasicGamer::route(const std::vector<int> &pinIndices, int numTurns, const u
     cleanDist<<<dim3((lenX + 31) / 32, (lenY + 31) / 32, LAYER), dim3(32, 32, 1)>>>(
         devDist.get(), devMark.get(), offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER);
   }
-  checkCudaErrors(cudaDeviceSynchronize());
 }
 #endif

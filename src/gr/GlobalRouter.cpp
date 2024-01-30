@@ -323,10 +323,10 @@ void GlobalRouter::route()
     t = std::chrono::high_resolution_clock::now();
 
     // Stage 3: maze routing
-//     n3 = netIndices.size();
-// #ifndef ENABLE_CUDA
-//     if (netIndices.size() > 0)
-//     {
+    n3 = netIndices.size();
+    if (netIndices.size() > 0)
+    {
+#ifndef ENABLE_CUDA
         log() << "stage 3: maze routing on sparsified routing graph" << std::endl;
 //         for (const int netIndex : netIndices)
 //         {
@@ -359,32 +359,26 @@ void GlobalRouter::route()
 //             patternRoute.constructRoutingDAG();
 //             patternRoute.run();
 
-//             gridGraph.commitTree(net.getRoutingTree());
-//             gridGraph.updateWireCostView(wireCostView, net.getRoutingTree());
-//             grid.step();
-//         }
-//         netIndices.clear();
-//         for (const auto &net : nets)
-//         {
-//             if (gridGraph.checkOverflow(net.getRoutingTree()) > 0)
-//             {
-//                 netIndices.push_back(net.getIndex());
-//             }
-//         }
-//         log() << netIndices.size() << " / " << nets.size() << " nets have overflows." << std::endl;
-//         logeol();
-//         // afile<<netIndices.size()<<" ";
-//     }
-// #else
-//     if (netIndices.size() > 0)
-//     {
-//         log() << "stage 3: gpu maze routing\n";
-//         GPUMazeRoute mazeRoute(nets, gridGraph, parameters);
-//         mazeRoute.run();
-//         mazeRoute.getOverflowNetIndices(netIndices);
+            gridGraph.commitTree(net.getRoutingTree());
+            gridGraph.updateWireCostView(wireCostView, net.getRoutingTree());
+            grid.step();
+        }
+#else
+        log() << "stage 3: gpu maze routing\n";
+        GPUMazeRoute mazeRoute(nets, gridGraph, parameters);
+        mazeRoute.run();
+#endif
+        netIndices.clear();
+        for (const auto &net : nets)
+        {
+            if (gridGraph.checkOverflow(net.getRoutingTree()) > 0)
+            {
+                netIndices.push_back(net.getIndex());
+            }
+        }
         log() << netIndices.size() << " / " << nets.size() << " nets have overflows." << std::endl;
-//     }
-// #endif
+        logeol();
+    }
     t3 = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t).count();
     t = std::chrono::high_resolution_clock::now();
 
@@ -649,6 +643,29 @@ void GlobalRouter::getGuides(const GRNet &net, vector<std::pair<std::pair<int, i
     };
 }
 
+void GlobalRouter::getGuide(const GRNet &net, std::vector<std::array<int, 6>> &guide)
+{
+    guide.clear();
+    auto tree = net.getRoutingTree();
+    if(tree == nullptr)
+        return;
+    else if(tree->children.size() == 0)
+        guide.push_back({ tree->x, tree->y, tree->layerIdx, tree->x, tree->y, tree->layerIdx });
+    else
+        GRTreeNode::preorder(tree, [&](std::shared_ptr<GRTreeNode> node) {
+            for(const auto &child : node->children) {
+                guide.push_back({ 
+                    std::min(node->x, child->x),
+                    std::min(node->y, child->y),
+                    std::min(node->layerIdx, child->layerIdx),
+                    std::max(node->x, child->x),
+                    std::max(node->y, child->y),
+                    std::max(node->layerIdx, child->layerIdx),
+                });
+            }
+        });
+}
+
 void GlobalRouter::printStatistics() const
 {
     log() << "routing statistics" << std::endl;
@@ -779,23 +796,30 @@ void GlobalRouter::write(std::string guide_file)
     areaOfPinPatches = 0;
     areaOfWirePatches = 0;
     std::stringstream ss;
+    std::vector<std::array<int, 6>> guide;
     for (const GRNet &net : nets)
     {
-        vector<std::pair<std::pair<int, int>, utils::BoxT<int>>> guides;
-        getGuides(net, guides);
+        // vector<std::pair<std::pair<int, int>, utils::BoxT<int>>> guides;
+        // getGuides(net, guides);
+        // ss << net.getName() << std::endl;
+        // ss << "(" << std::endl;
+        // for (const auto &guide : guides)
+        // {
+        //     ss << guide.second.x.low << " "
+        //        << guide.second.y.low << " "
+        //        << guide.first.first << " "
+        //        << guide.second.x.high << " "
+        //        << guide.second.y.high << " "
+        //        << guide.first.second << std::endl;
+        // }
+        // ss << ")" << std::endl;
 
+        getGuide(net, guide);
         ss << net.getName() << std::endl;
-        ss << "(" << std::endl;
-        for (const auto &guide : guides)
-        {
-            ss << guide.second.x.low << " "
-               << guide.second.y.low << " "
-               << guide.first.first << " "
-               << guide.second.x.high << " "
-               << guide.second.y.high << " "
-               << guide.first.second << std::endl;
-        }
-        ss << ")" << std::endl;
+        ss << "(\n";
+        for (const auto &[lx, ly, lz, hx, hy, hz] : guide)
+            ss << lx << " " << ly << " " << lz << " " << hx << " " << hy << " " << hz << "\n";
+        ss << ")\n";
     }
     log() << std::endl;
     log() << "writing output..." << std::endl;

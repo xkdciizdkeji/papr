@@ -38,6 +38,7 @@ private:
     void sortNetIndicesOLI(std::vector<int> &netIndices) const;
     void sortNetIndicesRandom(std::vector<int> &netIndices) const;
     void getGuides(const GRNet &net, std::vector<std::pair<std::pair<int, int>, utils::BoxT<int>>> &guides);
+    void getGuide(const GRNet &net, std::vector<std::array<int, 6>> &guide);
     // void getGuides(const GRNet &net, std::vector<std::pair<int, utils::BoxT<int>>> &guides);
     void printStatistics() const;
 

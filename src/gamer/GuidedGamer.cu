@@ -51,7 +51,7 @@ __global__ static void packViaToSegs(realT *costAtViaseg, int *posAtViaseg, int 
     int pos = idxPosMap[idx];
     locAtRow[pos] = offset + i;
     posAtViaseg[offset + i] = pos;
-    costAtViaseg[offset + i] = (i == 0 ? INFINITY_DISTANCE : nonStackViaCost[idx]);
+    costAtViaseg[offset + i] = nonStackViaCost[idx];
   }
 }
 
@@ -349,27 +349,27 @@ bool GuidedGamer::getIsRouted() const
                      { return x & y; });
 }
 
-void GuidedGamer::setGuide2D(const std::vector<utils::BoxT<int>> &boxes)
+void GuidedGamer::setGuide(const std::vector<std::array<int, 6>> &guide)
 {
   std::vector<std::pair<int3, int3>> wires;
   std::vector<std::pair<int3, int3>> viasegs;
   // collect wire segments and via segments
-  for (const auto &box : boxes)
+  for(const auto &[lx, ly, lz, hx, hy, hz] : guide)
   {
     // collect wires
-    for (int z = 0; z < LAYER; z++)
+    for (int z = lz; z <= hz; z++)
     {
       if ((z & 1) ^ DIRECTION) // YX
-        for (int y = box.ly(); y < box.hy(); y++)
-          wires.emplace_back(make_int3(box.lx(), y, z), make_int3(box.hx() - 1, y, z));
+        for (int y = ly; y <= hy; y++)
+          wires.emplace_back(make_int3(lx, y, z), make_int3(hx, y, z));
       else // XY
-        for (int x = box.lx(); x < box.hx(); x++)
-          wires.emplace_back(make_int3(x, box.ly(), z), make_int3(x, box.hy() - 1, z));
+        for (int x = lx; x <= hx; x++)
+          wires.emplace_back(make_int3(x, ly, z), make_int3(x, hy, z));
     }
     // collect viasegs
-    for (int x = box.lx(); x < box.hx(); x++)
-      for (int y = box.ly(); y < box.hy(); y++)
-        viasegs.emplace_back(make_int3(x, y, 0), make_int3(x, y, LAYER - 1));
+    for (int x = lx; x <= hx; x++)
+      for (int y = ly; y <= hy; y++)
+        viasegs.emplace_back(make_int3(x, y, lz), make_int3(x, y, hz));
   }
   // sort wire segments and via segments
   auto compareWire = [&](const std::pair<int3, int3> &left, const std::pair<int3, int3> &right)
@@ -544,7 +544,6 @@ void GuidedGamer::setGuide2D(const std::vector<utils::BoxT<int>> &boxes)
   packViaToSegs<<<(numViasegs + 1023) / 1024, 1024>>>(
       devCostAtViaseg.get(), devPosAtViaseg.get(), devLocAtRow.get(),
       devViasegPackPlan.get(), devNonStackViaCost.get(), devIdxPosMap.get(), numViasegs, DIRECTION, N);
-  checkCudaErrors(cudaDeviceSynchronize());
 }
 
 void GuidedGamer::reserve(int nWires, int nRows, int nLongWires, int nWorkplace, int nViasegs)
@@ -618,6 +617,5 @@ void GuidedGamer::route(const std::vector<int> &pinIndices, int numTurns)
         devIdxAtRow.get(), devLocAtRow.get(), devPosAtViaseg.get(), devPinPositions.get(), numPins, numRows, numTurns);
     cleanDist<<<(numRows * PACK_ROW_SIZE + 1023) / 1024, 1024>>>(devDistAtRow.get(), devMarkAtRow.get(), numRows);
   }
-  checkCudaErrors(cudaDeviceSynchronize());
 }
 #endif
