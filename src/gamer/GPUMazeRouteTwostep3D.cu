@@ -5,8 +5,10 @@
 GPUMazeRouteTwostep3D::GPUMazeRouteTwostep3D(const std::shared_ptr<GPURouteContext> &context)
     : context(context)
 {
-  int scaleX = std::min(context->getX() / 256, MAX_SCALE);
-  int scaleY = std::min(context->getY() / 256, MAX_SCALE);
+  // int scaleX = std::min(context->getX() / 64, MAX_SCALE);
+  // int scaleY = std::min(context->getY() / 64, MAX_SCALE);
+  int scaleX = 4;
+  int scaleY = 4;
   scaler = std::make_unique<GridScaler>(context->getDIRECTION(), context->getN(), context->getX(), context->getY(), context->getLAYER(), scaleX, scaleY);
   scaler->setWireCost(context->getWireCost());
   scaler->setViaCost(context->getNonStackViaCost());
@@ -65,8 +67,24 @@ void GPUMazeRouteTwostep3D::run(const std::vector<int> &netIndices, int numCoars
       coarseGamer->route(coarsePinIndices, numCoarseTurns, coarseBox);
       checkCudaErrors(cudaMemcpy(coarseRoutes.data(), coarseGamer->getRoutes().get(),
                                  coarseRoutes.size() * sizeof(int), cudaMemcpyDeviceToHost));
-      getGuideFromCoarseRoutes(guide, coarseRoutes);
+      // getGuide(guide, coarseRoutes);
+      getGuide(guide, coarsePinIndices, coarseRoutes);
     }
+
+    // if (netId == 1173)
+    // {
+    //   printf("pins:\n");
+    //   for (int idx : pinIndices)
+    //   {
+    //     auto [x, y, z] = idxToXYZ(idx, context->getDIRECTION(), context->getN());
+    //     printf("(%d, %d, %d)\n", x, y, z);
+    //   }
+    //   printf("guide:\n");
+    //   for(auto [lx, ly, lz, hx, hy, hz] : guide)
+    //   {
+    //     printf("[lx: %d, hx: %d] - [ly: %d, hy: %d] - [lz: %d, hz: %d]\n", lx, hx, ly, hy, lz, hz);
+    //   }
+    // }
 
     // fine routing using guides
     fineGamer->setGuide(guide);
@@ -80,7 +98,7 @@ void GPUMazeRouteTwostep3D::run(const std::vector<int> &netIndices, int numCoars
   }
 }
 
-void GPUMazeRouteTwostep3D::getCoarsePinIndices(std::vector<int> &coarsePinIndices, const std::vector<int> &pinIndices)
+void GPUMazeRouteTwostep3D::getCoarsePinIndices(std::vector<int> &coarsePinIndices, const std::vector<int> &pinIndices) const
 {
   // transform 3d pin to coarse 2d pin
   coarsePinIndices.resize(pinIndices.size());
@@ -102,7 +120,7 @@ void GPUMazeRouteTwostep3D::getCoarsePinIndices(std::vector<int> &coarsePinIndic
             { return order[left] < order[right]; });
 }
 
-void GPUMazeRouteTwostep3D::getGuideFromCoarseRoutes(std::vector<std::array<int, 6>> &guide, const std::vector<int> &coarseRoutes)
+void GPUMazeRouteTwostep3D::getGuide(std::vector<std::array<int, 6>> &guide, const std::vector<int> &coarseRoutes) const
 {
   guide.clear();
   for (int i = 0; i < coarseRoutes[0]; i += 2)
@@ -115,6 +133,32 @@ void GPUMazeRouteTwostep3D::getGuideFromCoarseRoutes(std::vector<std::array<int,
                      std::min(context->getX(), (endX + 1) * scaler->getScaleX()) - 1,
                      std::min(context->getY(), (endY + 1) * scaler->getScaleY()) - 1,
                      context->getLAYER() - 1});
+  }
+}
+
+void GPUMazeRouteTwostep3D::getGuide(std::vector<std::array<int, 6>> &guide, const std::vector<int> &coarsePinIndices, const std::vector<int> &coarseRoutes) const
+{
+  guide.clear();
+  for (int idx : coarsePinIndices)
+  {
+    auto [x, y, z] = idxToXYZ(idx, context->getDIRECTION(), scaler->getCoarseN());
+    guide.push_back({x * scaler->getScaleX(),
+                     y * scaler->getScaleY(),
+                     0,
+                     std::min(context->getX(), (x + 1) * scaler->getScaleX()) - 1,
+                     std::min(context->getY(), (y + 1) * scaler->getScaleY()) - 1,
+                     context->getLAYER() - 1});
+  }
+  for (int i = 0; i < coarseRoutes[0]; i += 2)
+  {
+    auto [startX, startY, startZ] = idxToXYZ(coarseRoutes[1 + i], context->getDIRECTION(), scaler->getCoarseN());
+    auto [endX, endY, endZ] = idxToXYZ(coarseRoutes[2 + i], context->getDIRECTION(), scaler->getCoarseN());
+    guide.push_back({startX * scaler->getScaleX(),
+                     startY * scaler->getScaleY(),
+                     startZ,
+                     std::min(context->getX(), (endX + 1) * scaler->getScaleX()) - 1,
+                     std::min(context->getY(), (endY + 1) * scaler->getScaleY()) - 1,
+                     endZ});
   }
 }
 

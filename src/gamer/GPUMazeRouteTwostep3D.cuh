@@ -14,8 +14,9 @@ public:
   void run(const std::vector<int> &netIndices, int numCoarseTurns, int numFineTurns, int margin);
 
 private:
-  void getCoarsePinIndices(std::vector<int> &coarsePinIndices, const std::vector<int> &pinIndices);
-  void getGuideFromCoarseRoutes(std::vector<std::array<int, 6>> &guide, const std::vector<int> &coarseRoutes);
+  void getCoarsePinIndices(std::vector<int> &coarsePinIndices, const std::vector<int> &pinIndices) const;
+  void getGuide(std::vector<std::array<int, 6>> &guide, const std::vector<int> &coarseRoutes) const;
+  void getGuide(std::vector<std::array<int, 6>> &guide, const std::vector<int> &coarsePinIndices, const std::vector<int> &coarseRoutes) const;
 
 private:
   std::shared_ptr<GPURouteContext> context;

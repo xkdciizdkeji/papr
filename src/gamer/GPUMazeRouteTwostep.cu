@@ -5,8 +5,10 @@
 GPUMazeRouteTwostep::GPUMazeRouteTwostep(const std::shared_ptr<GPURouteContext> &context)
     : context(context)
 {
-  int scaleX = std::min(context->getX() / 256, MAX_SCALE);
-  int scaleY = std::min(context->getY() / 256, MAX_SCALE);
+  // int scaleX = std::min(context->getX() / 256, MAX_SCALE);
+  // int scaleY = std::min(context->getY() / 256, MAX_SCALE);
+  int scaleX = 4;
+  int scaleY = 4;
   extractor = std::make_unique<Grid2DExtractor>(context->getDIRECTION(), context->getN(), context->getX(), context->getY(), context->getLAYER());
   extractor->setWireCost(context->getWireCost());
   scaler = std::make_unique<GridScaler2D>(context->getX(), context->getY(), scaleX, scaleY);

@@ -320,6 +320,7 @@ void GPURouteContext::applyToCpu(const std::vector<int> &netIndices)
   checkCudaErrors(cudaMemcpy(allNetRoutes.data(), devAllNetRoutes.get(), allNetRoutes.size() * sizeof(int), cudaMemcpyDeviceToHost));
   for (int netId : netIndices)
   {
+    // printf("apply net(id=%d)\n", netId);
     auto oldTree = nets[netId].getRoutingTree();
     if (oldTree != nullptr)
       gridGraph.commitTree(oldTree, true);
