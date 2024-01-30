@@ -63,7 +63,7 @@ public:
     // For visualization
     void write(const std::string heatmap_file="heatmap.txt") const;
     
-    void clear(){ 
+    void clearDemand(){ 
         totalLength = 0; 
         totalNumVias = 0; 
         for (int layerIdx = 0; layerIdx < nLayers; layerIdx++)
@@ -78,6 +78,9 @@ public:
         }
     };
     
+    std::vector<std::vector<std::vector<GraphEdge>>> get(){
+        return graphEdges;
+    }
 private:
     const Parameters& parameters;
     
