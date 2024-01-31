@@ -694,11 +694,17 @@ void GlobalRouter::getGuide(const GRNet &net, std::vector<std::array<int, 6>> &g
     auto tree = net.getRoutingTree();
     if(tree == nullptr)
         return;
-    else if(tree->children.size() == 0)
-        guide.push_back({ tree->x, tree->y, tree->layerIdx, tree->x, tree->y, tree->layerIdx });
+    else if(tree->children.size() == 0){
+        int layer1 = min(tree->layerIdx, static_cast<int>(gridGraph.getNumLayers()-1));
+        int layer2 = min(tree->layerIdx+1, static_cast<int>(gridGraph.getNumLayers()));
+        guide.push_back({ tree->x, tree->y, layer1, tree->x, tree->y, layer2  });
+    }
     else
         GRTreeNode::preorder(tree, [&](std::shared_ptr<GRTreeNode> node) {
             for(const auto &child : node->children) {
+                if(node->layerIdx == child->layerIdx && node->x == child->x && node->y == child->y)
+                    continue;
+                else
                 guide.push_back({ 
                     std::min(node->x, child->x),
                     std::min(node->y, child->y),
@@ -807,9 +813,7 @@ void GlobalRouter::printStatistics() const
                 }
             }
         }
-        // overflow_cost += layer_overflows * 0.1; // gg.unit_overflow_cost();
         overflow_cost += layer_overflows * unit_overflow_costs[z];
-        // log() << "Layer = " << z << " layer_nonstack_via_counter: "<<layer_nonstack_via_counter<< ", num_overflows = " << num_overflows << ", layer_overflows = " << layer_overflows << ", overflow cost = " << overflow_cost << std::endl;
         log() << "Layer = " << z << ", num_overflows = " << num_overflows << ", layer_overflows = " << layer_overflows << ", overflow cost = " << overflow_cost << std::endl;
     }
 
@@ -843,21 +847,6 @@ void GlobalRouter::write(std::string guide_file)
     std::vector<std::array<int, 6>> guide;
     for (const GRNet &net : nets)
     {
-        // vector<std::pair<std::pair<int, int>, utils::BoxT<int>>> guides;
-        // getGuides(net, guides);
-        // ss << net.getName() << std::endl;
-        // ss << "(" << std::endl;
-        // for (const auto &guide : guides)
-        // {
-        //     ss << guide.second.x.low << " "
-        //        << guide.second.y.low << " "
-        //        << guide.first.first << " "
-        //        << guide.second.x.high << " "
-        //        << guide.second.y.high << " "
-        //        << guide.first.second << std::endl;
-        // }
-        // ss << ")" << std::endl;
-
         getGuide(net, guide);
         ss << net.getName() << std::endl;
         ss << "(\n";

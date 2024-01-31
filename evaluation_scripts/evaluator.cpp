@@ -240,9 +240,9 @@ class NVR_DB
     void report_statistic();
     bool check_connectivity(const NVR_Net *net,
       std::vector< std::vector< std::vector<int> > > &flag) const;
-    void update_nonstack_via_counter(unsigned net_idx, const std::vector<NVR_Point3D> &via_loc,
+    void update_stacked_via_counter(unsigned net_idx, const std::vector<NVR_Point3D> &via_loc,
           std::vector< std::vector< std::vector<int> > > &flag,
-          std::vector< std::vector< std::vector<int> > > &nonstack_via_counter) const;
+          std::vector< std::vector< std::vector<int> > > &stacked_via_counter) const;
 
     double overflowLossFunc(double overflow, double slope);
 
@@ -464,27 +464,29 @@ bool NVR_DB::read_gr_solution(const char *input)
   }
 
   std::unordered_map<std::string, NVR_Net *> net_mapper;
+  std::unordered_map<std::string, bool> net_completed;
   for(NVR_Net &net : m_nets) {
     net_mapper[net.name()] = &net;
+    net_completed[net.name()] = false;
   }
 
-  int total_opens = 0;
+  unsigned long total_opens = 0;
   std::vector<int> total_vias(m_graph.num_layer(), 0);
   std::vector< std::vector< std::vector<int> > > flag;
   std::vector< std::vector< std::vector<int> > > wire_counter;
-  std::vector< std::vector< std::vector<int> > > nonstack_via_counter;
+  std::vector< std::vector< std::vector<int> > > stacked_via_counter;
 
   flag.resize(m_graph.num_layer());
   wire_counter.resize(m_graph.num_layer());
-  nonstack_via_counter.resize(m_graph.num_layer());
+  stacked_via_counter.resize(m_graph.num_layer());
   for(unsigned z = 0; z < m_graph.num_layer(); z++) {
     flag[z].resize(m_graph.num_gridx());
     wire_counter[z].resize(m_graph.num_gridx());
-    nonstack_via_counter[z].resize(m_graph.num_gridx());
+    stacked_via_counter[z].resize(m_graph.num_gridx());
     for(unsigned x = 0; x < m_graph.num_gridx(); x++) {
       flag[z][x].resize(m_graph.num_gridy(), -1);
       wire_counter[z][x].resize(m_graph.num_gridy(), 0);
-      nonstack_via_counter[z][x].resize(m_graph.num_gridy(), 0);
+      stacked_via_counter[z][x].resize(m_graph.num_gridy(), 0);
     }
   }
 
@@ -499,13 +501,15 @@ bool NVR_DB::read_gr_solution(const char *input)
       has_connectivity_violation = false;
     } else if(line[0] == '(') {
     } else if(line[0] == ')') {
-      update_nonstack_via_counter(net->idx(), via_loc, flag, nonstack_via_counter);
+      update_stacked_via_counter(net->idx(), via_loc, flag, stacked_via_counter);
       if(has_connectivity_violation) {
         total_opens++;
       } else {
         NVR_ASSERT(net);
         if(!check_connectivity(net, flag)) {
           total_opens++;
+        } else {
+          net_completed[net->name()] = true;
         }
       }
       net = NULL;
@@ -552,6 +556,7 @@ bool NVR_DB::read_gr_solution(const char *input)
             has_connectivity_violation = true;
           }
         } else { //unroutable layer
+          printf("wire %s\n", line.c_str());
           NVR_ASSERT(0);
           has_connectivity_violation = true;
         }
@@ -576,7 +581,7 @@ bool NVR_DB::read_gr_solution(const char *input)
     for(unsigned x = 0; x < m_graph.num_gridx(); x++) {
       for(unsigned y = 0; y < m_graph.num_gridy(); y++) {
         NVR_Gcell &cell = gg.get_gcell(x, y);
-        int demand = 2 * wire_counter[z][x][y] + nonstack_via_counter[z][x][y];
+        int demand = 2 * wire_counter[z][x][y] + stacked_via_counter[z][x][y];
         cell.set_demand(demand);
 
         if (cell.capacity() > 0.001 ){
@@ -602,20 +607,27 @@ bool NVR_DB::read_gr_solution(const char *input)
     printf("Layer = %d, layer_overflows = %lf, overflow cost = %lf\n", z, layer_overflows, overflow_cost);
   }
 
-  double total_cost = overflow_cost*50 + via_cost + wl_cost;
-  printf("Number of open nets : %d\n", total_opens);
+  unsigned long total_incompleted = 0;
+  for (auto & [key, value] : net_completed) {
+    if (value == false) {
+      total_incompleted++;
+    }
+  }
+
+  double total_cost = overflow_cost + via_cost + wl_cost;
+  printf("Number of open nets : %lu\n", total_opens);
+  printf("Number of incompleted nets : %lu\n", total_incompleted);
   printf("wirelength cost %.4lf\n", wl_cost);
   printf("via cost %.4lf\n", via_cost);
   printf("overflow cost %.4lf\n", overflow_cost);
-  printf("overflow cost*50 %.4lf\n", overflow_cost*50);
   printf("total cost %.4lf\n", total_cost);
   return true;
 }
 
-void NVR_DB::update_nonstack_via_counter(unsigned net_idx,
+void NVR_DB::update_stacked_via_counter(unsigned net_idx,
   const std::vector<NVR_Point3D> &via_loc,
   std::vector< std::vector< std::vector<int> > > &flag,
-  std::vector< std::vector< std::vector<int> > > &nonstack_via_counter) const
+  std::vector< std::vector< std::vector<int> > > &stacked_via_counter) const
 {
   for(const NVR_Point3D &pp : via_loc) {
     if(flag[pp.z()][pp.x()][pp.y()] != net_idx) {
@@ -624,24 +636,24 @@ void NVR_DB::update_nonstack_via_counter(unsigned net_idx,
       int direction = layer_directions[pp.z()];
       if(direction == 0) {
         if ((pp.x() > 0) && (pp.x() < m_graph.num_gridx() - 1)) {
-          nonstack_via_counter[pp.z()][pp.x()-1][pp.y()]++;
-          nonstack_via_counter[pp.z()][pp.x()][pp.y()]++;
+          stacked_via_counter[pp.z()][pp.x()-1][pp.y()]++;
+          stacked_via_counter[pp.z()][pp.x()][pp.y()]++;
         } else if (pp.x() > 0 ) {
-          nonstack_via_counter[pp.z()][pp.x()-1][pp.y()] += 2;
+          stacked_via_counter[pp.z()][pp.x()-1][pp.y()] += 2;
         } else if (pp.x() < m_graph.num_gridx() - 1) {
-          nonstack_via_counter[pp.z()][pp.x()][pp.y()] += 2;
+          stacked_via_counter[pp.z()][pp.x()][pp.y()] += 2;
         }
       } else if (direction == 1) {
         if ((pp.y() > 0) && (pp.y() < m_graph.num_gridy() - 1)) {
-          nonstack_via_counter[pp.z()][pp.x()][pp.y()-1]++;
-          nonstack_via_counter[pp.z()][pp.x()][pp.y()]++;
+          stacked_via_counter[pp.z()][pp.x()][pp.y()-1]++;
+          stacked_via_counter[pp.z()][pp.x()][pp.y()]++;
         } else if (pp.y() > 0 ) {
-          nonstack_via_counter[pp.z()][pp.x()][pp.y()-1] += 2;
+          stacked_via_counter[pp.z()][pp.x()][pp.y()-1] += 2;
         } else if (pp.y() < m_graph.num_gridy() - 1) {
-          nonstack_via_counter[pp.z()][pp.x()][pp.y()] += 2;
+          stacked_via_counter[pp.z()][pp.x()][pp.y()] += 2;
         }
       }
-      //nonstack_via_counter[pp.z()][pp.x()][pp.y()]++;
+      //stacked_via_counter[pp.z()][pp.x()][pp.y()]++;
     }
 
   }
