@@ -66,7 +66,7 @@ void GlobalRouter::route()
     routers.reserve(netIndices.size());
     for (auto id : netIndices)
         routers.emplace_back(nets[id]);
-    
+
     vector<vector<int>> batches = getBatches(routers, netIndices);
     double t_batch = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t_b_b).count();
     // std::ofstream outputFile("batches.txt");
@@ -116,8 +116,8 @@ void GlobalRouter::route()
         // patternRoute.constructRoutingDAG();
         PatternRoutes.insert(std::make_pair(netIndex, patternRoute));
     }
-    //cfile << "]";
-    //cfile.close();
+    // cfile << "]";
+    // cfile.close();
     double t_cst = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t_cst_b).count();
 
     auto t_pr_b = std::chrono::high_resolution_clock::now();
@@ -135,7 +135,7 @@ void GlobalRouter::route()
     // {
     //     gridGraph.commitTree(net.getRoutingTree());
     // }
-    
+
     double t_pr = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t_pr_b).count();
 
     // netIndices.clear();
@@ -224,7 +224,7 @@ void GlobalRouter::route()
 
         // std::ofstream  aafile;
         // aafile.open("batch", std::ios::app);
-        
+
         // for (auto batch: batches)
         // {
         //     for (auto id: batch)
@@ -241,7 +241,7 @@ void GlobalRouter::route()
             patternRoute.constructSteinerTree();
             // patternRoute.constructRoutingDAG();
             // patternRoute.constructDetours(congestionView); // KEY DIFFERENCE compared to stage 1
-            PatternRoutes.insert(std::make_pair(netIndex, patternRoute));   
+            PatternRoutes.insert(std::make_pair(netIndex, patternRoute));
         }
         // // log()<<"routers size1:"<<routers.size()<<std::endl;
         // // log()<<"batches size1:"<<batches.size()<<std::endl;
@@ -266,21 +266,21 @@ void GlobalRouter::route()
         // //     // Handle the error accordingly
         // // }
 
-        //std::mutex mtx;
+        // std::mutex mtx;
         for (const vector<int> &batch : batches)
         {
             runJobsMT(batch.size(), numofThreads, [&](int jobIdx)
                       {
-            GRNet &net = nets[batch[jobIdx]];
-            gridGraph.commitTree(net.getRoutingTree(), true);
-            auto patternRoute = PatternRoutes.find(batch[jobIdx])->second;
-            patternRoute.constructRoutingDAG();
-            patternRoute.constructDetours(congestionView); // KEY DIFFERENCE compared to stage 1
-            patternRoute.run();
-            //mtx.lock();
-            gridGraph.commitTree(net.getRoutingTree()); 
-            //mtx.unlock();
-            });
+                          GRNet &net = nets[batch[jobIdx]];
+                          gridGraph.commitTree(net.getRoutingTree(), true);
+                          auto patternRoute = PatternRoutes.find(batch[jobIdx])->second;
+                          patternRoute.constructRoutingDAG();
+                          patternRoute.constructDetours(congestionView); // KEY DIFFERENCE compared to stage 1
+                          patternRoute.run();
+                          // mtx.lock();
+                          gridGraph.commitTree(net.getRoutingTree());
+                          // mtx.unlock();
+                      });
         }
 
         // std::vector<std::vector<std::vector<GraphEdge>>> old_demand;
@@ -288,7 +288,7 @@ void GlobalRouter::route()
         // std::vector<double> result;
         // std::ofstream  dfile;
         // dfile.open("demand", std::ios::app);
-        // old_demand = gridGraph.get(); 
+        // old_demand = gridGraph.get();
         // gridGraph.clearDemand();
         // for (auto net:nets)
         // {
@@ -307,7 +307,7 @@ void GlobalRouter::route()
         //         }
         //     }
         // }
-        
+
         // dfile<<"total_demand_num:"<<count1<<std::endl;
         // double count2=0;
         // int total_num=0;
@@ -317,7 +317,7 @@ void GlobalRouter::route()
         //     // if (i > 0)
         //     // {
         //     //     total_num += i;
-        //     if(i !=0) 
+        //     if(i !=0)
         //     {dfile<<i<<" ";
         //     count2 ++;}
         //     // }else if (i < 0)
@@ -479,7 +479,7 @@ void GlobalRouter::sortNetIndicesOFDALD(vector<int> &netIndices, vector<int> &ne
     for (int netIndex : netIndices)
     {
         auto &net = nets[netIndex];
-        scores[netIndex] = net.getBoundingBox().hp() + 15 * netOverflow[netIndex];
+        scores[netIndex] = net.getBoundingBox().hp() + 50 * netOverflow[netIndex];
     }
     sort(netIndices.begin(), netIndices.end(), [&](int lhs, int rhs)
          { return scores[lhs] > scores[rhs]; });
@@ -491,7 +491,7 @@ void GlobalRouter::sortNetIndicesOFDALI(vector<int> &netIndices, vector<int> &ne
     for (int netIndex : netIndices)
     {
         auto &net = nets[netIndex];
-        scores[netIndex] = net.getBoundingBox().hp() + 30 * netOverflow[netIndex];
+        scores[netIndex] = net.getBoundingBox().hp() + 15 * netOverflow[netIndex];
     }
     sort(netIndices.begin(), netIndices.end(), [&](int lhs, int rhs)
          { return scores[lhs] < scores[rhs]; });
@@ -694,15 +694,17 @@ void GlobalRouter::getGuide(const GRNet &net, std::vector<std::array<int, 6>> &g
 {
     guide.clear();
     auto tree = net.getRoutingTree();
-    if(tree == nullptr)
+    if (tree == nullptr)
         return;
-    else if(tree->children.size() == 0){
-        int layer1 = min(tree->layerIdx, static_cast<int>(gridGraph.getNumLayers()-1));
-        int layer2 = min(tree->layerIdx+1, static_cast<int>(gridGraph.getNumLayers()));
-        guide.push_back({ tree->x, tree->y, layer1, tree->x, tree->y, layer2  });
+    else if (tree->children.size() == 0)
+    {
+        int layer1 = min(tree->layerIdx, static_cast<int>(gridGraph.getNumLayers() - 1));
+        int layer2 = min(tree->layerIdx + 1, static_cast<int>(gridGraph.getNumLayers()));
+        guide.push_back({tree->x, tree->y, layer1, tree->x, tree->y, layer2});
     }
     else
-        GRTreeNode::preorder(tree, [&](std::shared_ptr<GRTreeNode> node) {
+        GRTreeNode::preorder(tree, [&](std::shared_ptr<GRTreeNode> node)
+                             {
             for(const auto &child : node->children) {
                 if(node->layerIdx == child->layerIdx && node->x == child->x && node->y == child->y)
                     continue;
@@ -715,8 +717,7 @@ void GlobalRouter::getGuide(const GRNet &net, std::vector<std::array<int, 6>> &g
                     std::max(node->y, child->y),
                     std::max(node->layerIdx, child->layerIdx),
                 });
-            }
-        });
+            } });
 }
 
 void GlobalRouter::printStatistics() const
@@ -743,6 +744,10 @@ void GlobalRouter::printStatistics() const
         {
             log() << "ERROR: null GRTree net(id=" << net.getIndex() << "\n";
             exit(-1);
+        }
+        if (net.getRoutingTree()->children.size() == 0)
+        {
+            viaCount++;
         }
         GRTreeNode::preorder(net.getRoutingTree(), [&](std::shared_ptr<GRTreeNode> node)
                              {
@@ -925,7 +930,8 @@ vector<vector<int>> GlobalRouter::getBatches(vector<SingleNetRouter> &routers, c
     else
     {
 
-        runJobsMT(netsToRoute.size(), numofThreads, [&](int jobIdx) {
+        runJobsMT(netsToRoute.size(), numofThreads, [&](int jobIdx)
+                  {
             auto& router = routers[jobIdx];
             auto& net = router.grNet;
             utils::IntervalT<long int> xIntvl, yIntvl;
@@ -933,8 +939,7 @@ vector<vector<int>> GlobalRouter::getBatches(vector<SingleNetRouter> &routers, c
             xIntvl.high = DBU(net.getBoundingBox().x.high);
             yIntvl.low = DBU(net.getBoundingBox().y.low);
             yIntvl.high = DBU(net.getBoundingBox().y.high);
-            router.guides.emplace_back(0, xIntvl, yIntvl);
-        });
+            router.guides.emplace_back(0, xIntvl, yIntvl); });
 
         Scheduler scheduler(routers, gridGraph.getNumLayers());
         batches = scheduler.scheduleOrderEq(numofThreads, netsToRoute);

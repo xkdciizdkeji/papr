@@ -556,7 +556,7 @@ bool NVR_DB::read_gr_solution(const char *input)
             has_connectivity_violation = true;
           }
         } else { //unroutable layer
-          printf("wire %s\n", line.c_str());
+          // printf("wire %s\n", line.c_str());
           NVR_ASSERT(0);
           has_connectivity_violation = true;
         }
