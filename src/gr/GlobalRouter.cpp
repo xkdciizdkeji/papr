@@ -477,7 +477,7 @@ void GlobalRouter::sortNetIndicesOFDALD(vector<int> &netIndices, vector<int> &ne
     for (int netIndex : netIndices)
     {
         auto &net = nets[netIndex];
-        scores[netIndex] = net.getBoundingBox().hp() + 30 * netOverflow[netIndex];
+        scores[netIndex] = net.getBoundingBox().hp() + 15 * netOverflow[netIndex];
     }
     sort(netIndices.begin(), netIndices.end(), [&](int lhs, int rhs)
          { return scores[lhs] > scores[rhs]; });
