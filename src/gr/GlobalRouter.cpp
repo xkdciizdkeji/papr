@@ -187,7 +187,7 @@ void GlobalRouter::route()
     {
         log() << "stage 2: pattern routing with possible detours" << std::endl;
         GridGraphView<bool> congestionView; // (2d) direction -> x -> y -> has overflow?
-        gridGraph.extractCongestionView(congestionView);
+        //gridGraph.extractCongestionView(congestionView);
         // for (const int netIndex : netIndices) {
         //     GRNet& net = nets[netIndex];
         //     gridGraph.commitTree(net.getRoutingTree(), true);
@@ -272,6 +272,7 @@ void GlobalRouter::route()
             runJobsMT(batch.size(), numofThreads, [&](int jobIdx)
                       {
                           GRNet &net = nets[batch[jobIdx]];
+                          congestionView = gridGraph.congestionView;
                           gridGraph.commitTree(net.getRoutingTree(), true);
                           auto patternRoute = PatternRoutes.find(batch[jobIdx])->second;
                           patternRoute.constructRoutingDAG();
@@ -709,7 +710,7 @@ void GlobalRouter::getGuide(const GRNet &net, std::vector<std::array<int, 6>> &g
                 if(node->layerIdx == child->layerIdx && node->x == child->x && node->y == child->y)
                     continue;
                 else
-                guide.push_back({ 
+                guide.push_back({
                     std::min(node->x, child->x),
                     std::min(node->y, child->y),
                     std::min(node->layerIdx, child->layerIdx),

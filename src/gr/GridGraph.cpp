@@ -39,7 +39,7 @@ GridGraph::GridGraph(const ISPD24Parser &parser, const Parameters &params)
                     for (int yy = y; yy < std::min(ySize, y + yBlock); yy++)
                         graphEdges[layerIdx][xx][yy].capacity = parser.gcell_edge_capaicty[layerIdx][yy][xx];
     }
-
+    congestionView.assign(2, vector<vector<bool>>(xSize, vector<bool>(ySize, false)));
     flag.assign(nLayers, vector<vector<bool>>(xSize, vector<bool>(ySize)));
 }
 
@@ -213,6 +213,10 @@ void GridGraph::selectAccessPoints(GRNet &net, robin_hood::unordered_map<uint64_
 void GridGraph::commitWire(const int layerIndex, const utils::PointT<int> lower, const bool reverse)
 {
     graphEdges[layerIndex][lower.x][lower.y].demand += (reverse ? -1.f : 1.f);
+    unsigned direction = getLayerDirection(layerIndex);
+    if(checkOverflow(layerIndex, lower.x, lower.y)){
+        congestionView[direction][lower.x][lower.y] = true;
+    }
     unsigned direction = layerDirections[layerIndex];
     DBU edgeLength = getEdgeLength(direction, lower[direction]);
     totalLength += (reverse ? -edgeLength : edgeLength);
@@ -399,7 +403,7 @@ std::string GridGraph::getPythonString(const std::shared_ptr<GRTreeNode> &routin
                             lpoint = cpoint;
                         }
                         congested = !congested;
-                    } 
+                    }
                 }
                 if (lpoint != hpoint) edges.emplace_back(lpoint, hpoint, congested);
             }
@@ -486,8 +490,8 @@ void GridGraph::extractWireCostView(GridGraphView<CostT> &view) const
                 DBU length = getEdgeLength(direction, edgeIndex);
                 // ------ legacy cost ------
                 // view[direction][x][y] = length * (unit_length_wire_cost + unitOverflowCost * (capacity < 1.0 ? 1.0 : logistic(capacity - demand, parameters.maze_logistic_slope)));
-                
-                // ------ new cost ------                
+
+                // ------ new cost ------
                 CostT slope = capacity > 0.f ? 0.5f : 1.5f;
                 view[direction][x][y] = length * unit_length_wire_cost + 50*unitOverflowCost * exp(slope * (demand - capacity)) * (exp(slope) - 1);
             }
@@ -523,7 +527,7 @@ void GridGraph::updateWireCostView(GridGraphView<CostT> &view, std::shared_ptr<G
         DBU length = getEdgeLength(direction, edgeIndex);
         // ------ legacy cost ------
         // view[direction][x][y] = length * (unit_length_wire_cost + unitOverflowCost[direction] * (capacity < 1.0 ? 1.0 : logistic(capacity - demand, parameters.maze_logistic_slope)));
-        
+
         // ------ new cost ------
         CostT slope = capacity > 0.f ? 0.5f : 1.5f;
         view[direction][x][y] = length * unit_length_wire_cost + 50*unitOverflowCost[direction] * exp(slope * (demand - capacity)) * (exp(slope) - 1);
