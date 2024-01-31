@@ -13,9 +13,10 @@ message(STATUS ${CMAKE_CURRENT_SOURCE_DIR})
 # Find includes in the build directories
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
-# enable cuda option
+# enable cuda option and iss sort option and only pattern routing option
 option(ENABLE_CUDA "enable cuda for gpu maze routing" OFF)
 option(ENABLE_ISSSORT "enable iss sort" OFF)
+option(ONLY_PATTERN_ROUTING "enable only pattern routing" OFF)
 
 # Project's name
 project(CUGR LANGUAGES C CXX)
@@ -109,6 +110,10 @@ endif()
 
 if(ENABLE_ISSSORT)
   target_compile_definitions(route PUBLIC -DENABLE_ISSSORT)
+endif()
+
+if(ONLY_PATTERN_ROUTING)
+  target_compile_definitions(route PUBLIC -DONLY_PATTERN_ROUTING)
 endif()
 
 #################
