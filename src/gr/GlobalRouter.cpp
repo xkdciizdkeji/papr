@@ -61,14 +61,14 @@ void GlobalRouter::route()
     // }
     // bfile.close();
 
-    auto t_b_b = std::chrono::high_resolution_clock::now();
+    // auto t_b_b = std::chrono::high_resolution_clock::now();
     vector<SingleNetRouter> routers;
     routers.reserve(netIndices.size());
     for (auto id : netIndices)
         routers.emplace_back(nets[id]);
 
-    vector<vector<int>> batches = getBatches(routers, netIndices);
-    double t_batch = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t_b_b).count();
+    vector<vector<int>> batches = getBatches(routers, netIndices, numofThreads);
+    // double t_batch = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t_b_b).count();
     // std::ofstream outputFile("batches.txt");
     // if (outputFile.is_open())
     // {
@@ -100,7 +100,7 @@ void GlobalRouter::route()
     // }
 
     // std::vector<PatternRoute*> PatternRoutes;
-    auto t_cst_b = std::chrono::high_resolution_clock::now();
+    // auto t_cst_b = std::chrono::high_resolution_clock::now();
     std::unordered_map<int, PatternRoute> PatternRoutes;
     // for output SteinerTree.txt
     // std::ofstream cfile;
@@ -118,9 +118,9 @@ void GlobalRouter::route()
     }
     // cfile << "]";
     // cfile.close();
-    double t_cst = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t_cst_b).count();
+    // double t_cst = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t_cst_b).count();
 
-    auto t_pr_b = std::chrono::high_resolution_clock::now();
+    // auto t_pr_b = std::chrono::high_resolution_clock::now();
     for (const vector<int> &batch : batches)
     {
         runJobsMT(batch.size(), numofThreads, [&](int jobIdx)
@@ -136,7 +136,7 @@ void GlobalRouter::route()
     //     gridGraph.commitTree(net.getRoutingTree());
     // }
 
-    double t_pr = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t_pr_b).count();
+    // double t_pr = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t_pr_b).count();
 
     // netIndices.clear();
     // for (const auto &net : nets)
@@ -187,11 +187,13 @@ void GlobalRouter::route()
     {
         log() << "stage 2: pattern routing with possible detours" << std::endl;
         GridGraphView<bool> congestionView; // (2d) direction -> x -> y -> has overflow?
-        //gridGraph.extractCongestionView(congestionView);
+#ifndef CONGESTION_UPDATE
+        gridGraph.extractCongestionView(congestionView);
         // for (const int netIndex : netIndices) {
         //     GRNet& net = nets[netIndex];
         //     gridGraph.commitTree(net.getRoutingTree(), true);
         // }
+#endif
 #ifndef ENABLE_ISSSORT
         sortNetIndices(netIndices);
 #else
@@ -220,124 +222,49 @@ void GlobalRouter::route()
         routers.reserve(netIndices.size());
         for (auto id : netIndices)
             routers.emplace_back(nets[id]);
-        batches = getBatches(routers, netIndices);
+        batches = getBatches(routers, netIndices, numofThreads);
 
-        // std::ofstream  aafile;
-        // aafile.open("batch", std::ios::app);
-
-        // for (auto batch: batches)
-        // {
-        //     for (auto id: batch)
-        //     {
-        //         aafile<<nets[id].getBoundingBox()<<" ";
-        //     }
-        //     aafile<<"\n";
-        // }
         for (const int netIndex : netIndices)
         {
             GRNet &net = nets[netIndex];
             // gridGraph.commitTree(net.getRoutingTree(), true);
             PatternRoute patternRoute(net, gridGraph, parameters);
             patternRoute.constructSteinerTree();
-            // patternRoute.constructRoutingDAG();
-            // patternRoute.constructDetours(congestionView); // KEY DIFFERENCE compared to stage 1
             PatternRoutes.insert(std::make_pair(netIndex, patternRoute));
         }
-        // // log()<<"routers size1:"<<routers.size()<<std::endl;
-        // // log()<<"batches size1:"<<batches.size()<<std::endl;
-        // // log()<<"PatternRoutes size1:"<<PatternRoutes.size()<<std::endl;
-
-        // // std::ofstream outputFile("batches.txt");
-        // // if (outputFile.is_open())
-        // // {
-        // //     for (const auto &batch : batches)
-        // //     {
-        // //         for (const auto &value : batch)
-        // //         {
-        // //             outputFile << value << " ";
-        // //         }
-        // //         outputFile << std::endl;
-        // //     }
-        // //     outputFile.close();
-        // // }
-        // // else
-        // // {
-        // //     // Failed to open the file
-        // //     // Handle the error accordingly
-        // // }
-
-        // std::mutex mtx;
+#ifndef CONGESTION_UPDATE
         for (const vector<int> &batch : batches)
         {
             runJobsMT(batch.size(), numofThreads, [&](int jobIdx)
                       {
-                          GRNet &net = nets[batch[jobIdx]];
-                          congestionView = gridGraph.congestionView;
-                          gridGraph.commitTree(net.getRoutingTree(), true);
-                          auto patternRoute = PatternRoutes.find(batch[jobIdx])->second;
-                          patternRoute.constructRoutingDAG();
-                          patternRoute.constructDetours(congestionView); // KEY DIFFERENCE compared to stage 1
-                          patternRoute.run();
-                          // mtx.lock();
-                          gridGraph.commitTree(net.getRoutingTree());
-                          // mtx.unlock();
-                      });
+                        GRNet &net = nets[batch[jobIdx]];
+                        gridGraph.commitTree(net.getRoutingTree(), true);
+                        auto patternRoute = PatternRoutes.find(batch[jobIdx])->second;
+                        patternRoute.constructRoutingDAG();
+                        patternRoute.constructDetours(congestionView); // KEY DIFFERENCE compared to stage 1
+                        patternRoute.run();
+                        gridGraph.commitTree(net.getRoutingTree()); });
         }
-
-        // std::vector<std::vector<std::vector<GraphEdge>>> old_demand;
-        // std::vector<std::vector<std::vector<GraphEdge>>> new_demand;
-        // std::vector<double> result;
-        // std::ofstream  dfile;
-        // dfile.open("demand", std::ios::app);
-        // old_demand = gridGraph.get();
-        // gridGraph.clearDemand();
-        // for (auto net:nets)
-        // {
-        //     gridGraph.commitTree(net.getRoutingTree());
-        // }
-        // new_demand = gridGraph.get();
-        // int count1 = 0;
-        // for (size_t i = 0; i < old_demand.size(); i++)
-        // {
-        //     for (size_t j = 0; j < old_demand[i].size(); j++)
-        //     {
-        //         for (size_t k = 0; k < old_demand[i][j].size(); k++)
-        //         {
-        //             result.emplace_back(new_demand[i][j][k].demand - old_demand[i][j][k].demand);
-        //             count1 ++;
-        //         }
-        //     }
-        // }
-
-        // dfile<<"total_demand_num:"<<count1<<std::endl;
-        // double count2=0;
-        // int total_num=0;
-        // for (auto i:result)
-        // {
-        //     total_num += i;
-        //     // if (i > 0)
-        //     // {
-        //     //     total_num += i;
-        //     if(i !=0)
-        //     {dfile<<i<<" ";
-        //     count2 ++;}
-        //     // }else if (i < 0)
-        //     // {
-        //     //     std::cout<<"negative"<<"\n";
-        //     // }
-        // }
-        // dfile<<std::endl;
-        // dfile<<"wrong_demand_num:"<<count2<<std::endl;
-        // dfile<<"average_wrong_value"<<total_num/count2<<std::endl;
-        // std::cout<<"num"<<std::endl;
-        // dfile.close();
-        // std::cin.get();
-
-        // gridGraph.clearDemand();
-        // for (auto net : nets)
-        // {
-        //     gridGraph.commitTree(net.getRoutingTree());
-        // }
+#else
+        std::mutex mtx;
+        for (const vector<int> &batch : batches)
+        {
+            runJobsMT(batch.size(), numofThreads, [&](int jobIdx)
+                      {
+                        GRNet &net = nets[batch[jobIdx]];
+                        mtx.lock();
+                        gridGraph.commitTree(net.getRoutingTree(), true);
+                        congestionView = gridGraph.congestionView;
+                        mtx.unlock();
+                        auto patternRoute = PatternRoutes.find(batch[jobIdx])->second;
+                        patternRoute.constructRoutingDAG();
+                        patternRoute.constructDetours(congestionView);
+                        patternRoute.run();
+                        mtx.lock();
+                        gridGraph.commitTree(net.getRoutingTree());
+                        mtx.unlock(); });
+        }
+#endif
 
         routers.clear();
         batches.clear();
@@ -919,7 +846,7 @@ void GlobalRouter::update_nonstack_via_counter(unsigned net_idx,
     }
 }
 
-vector<vector<int>> GlobalRouter::getBatches(vector<SingleNetRouter> &routers, const vector<int> &netsToRoute)
+vector<vector<int>> GlobalRouter::getBatches(vector<SingleNetRouter> &routers, const vector<int> &netsToRoute, int numofThreads)
 {
     vector<int> batch(netsToRoute.size());
     vector<vector<int>> batches;

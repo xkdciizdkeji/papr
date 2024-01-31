@@ -2,6 +2,7 @@
 #include "GRTree.h"
 #include "../obj/ISPD24Parser.h"
 #include "../utils/utils.h"
+#include <mutex>
 
 class GRNet;
 template <typename Type> class GridGraphView;

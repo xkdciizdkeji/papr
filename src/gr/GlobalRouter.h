@@ -13,6 +13,7 @@ public:
 
     void update_nonstack_via_counter(unsigned net_idx, const std::vector<std::vector<int>> &via_loc, std::vector<std::vector<std::vector<int>>> &flag, std::vector<std::vector<std::vector<int>>> &nonstack_via_counter) const;
 
+
 private:
     const Parameters& parameters;
     GridGraph gridGraph;
@@ -45,4 +46,5 @@ private:
     void runJobsMT(int numJobs, int numofThreads, const std::function<void(int)>& handle);
     void runJobsMTnew(std::vector<std::vector<int>> batches, const std::function<void(int)>& handle);
     std::vector<std::vector<int>> getBatches(std::vector<SingleNetRouter>& routers, const std::vector<int>& netsToRoute);
+    std::vector<std::vector<int>> getBatches(std::vector<SingleNetRouter> &routers, const std::vector<int> &netsToRoute, int numofThreads);
 };

@@ -8,37 +8,21 @@ $ git clone -b ispd24-lite https://github.com/flwave/gr_gpu.git
 **Step 2:** build by cmake
 ```bash
 $ cd ./gr_gpu/
-$ cmake -B build -DCMAKE_BUILD_TYPE=Release
+$ cmake -B build -DCMAKE_BUILD_TYPE=Release [options]
 $ cmake --build build
 ```
-**Step 2":** build by cmake (enable cuda)
+You can use the following options:
+```
+-DCMAKE_BUILD_TYPE=Release/Debug
+-DENABLE_CUDA=ON/OFF
+-DENABLE_ISSSORT=ON/OFF
+-DONLY_PATTERN_ROUTING=ON/OFF
+-DCONGESTION_UPDATE=ON/OFF
+```
+For example, if you want to build with cuda, you can use the following command:
 ```bash
 $ cd ./gr_gpu/
 $ cmake -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_CUDA=ON
-$ cmake --build build
-```
-**Step 2":** build by cmake (enable iss sort)
-```bash
-$ cd ./gr_gpu/
-$ cmake -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_ISSSORT=ON
-$ cmake --build build
-```
-**Step 2":** build by cmake (enable iss sort and cuda)
-```bash
-$ cd ./gr_gpu/
-$ cmake -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_ISSSORT=ON -DENABLE_CUDA=ON
-$ cmake --build build
-```
-**Step 2":** build by cmake (enable only pattern routing)
-```bash
-$ cd ./gr_gpu/
-$ cmake -B build -DCMAKE_BUILD_TYPE=Release -DONLY_PATTERN_ROUTING=ON
-$ cmake --build build
-```
-**Step 2":** build by cmake (enable only pattern routing and iss sort)
-```bash
-$ cd ./gr_gpu/
-$ cmake -B build -DCMAKE_BUILD_TYPE=Release -DONLY_PATTERN_ROUTING=ON -DENABLE_ISSSORT=ON
 $ cmake --build build
 ```
 **Step 3:** use the executable file

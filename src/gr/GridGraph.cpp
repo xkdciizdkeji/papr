@@ -214,10 +214,13 @@ void GridGraph::commitWire(const int layerIndex, const utils::PointT<int> lower,
 {
     graphEdges[layerIndex][lower.x][lower.y].demand += (reverse ? -1.f : 1.f);
     unsigned direction = getLayerDirection(layerIndex);
+#ifdef CONGESTION_UPDATE
     if(checkOverflow(layerIndex, lower.x, lower.y)){
         congestionView[direction][lower.x][lower.y] = true;
+    }else{
+        congestionView[direction][lower.x][lower.y] = false;
     }
-    unsigned direction = layerDirections[layerIndex];
+#endif
     DBU edgeLength = getEdgeLength(direction, lower[direction]);
     totalLength += (reverse ? -edgeLength : edgeLength);
 }

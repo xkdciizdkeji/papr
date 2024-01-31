@@ -17,6 +17,7 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 option(ENABLE_CUDA "enable cuda for gpu maze routing" OFF)
 option(ENABLE_ISSSORT "enable iss sort" OFF)
 option(ONLY_PATTERN_ROUTING "enable only pattern routing" OFF)
+option(CONGESTION_UPDATE "enable congestion update" OFF)
 
 # Project's name
 project(CUGR LANGUAGES C CXX)
@@ -114,6 +115,10 @@ endif()
 
 if(ONLY_PATTERN_ROUTING)
   target_compile_definitions(route PUBLIC -DONLY_PATTERN_ROUTING)
+endif()
+
+if(CONGESTION_UPDATE)
+  target_compile_definitions(route PUBLIC -DCONGESTION_UPDATE)
 endif()
 
 #################
