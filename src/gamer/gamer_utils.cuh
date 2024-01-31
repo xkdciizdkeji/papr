@@ -18,9 +18,9 @@ constexpr int PACK_ROW_SIZE = 1024;
 constexpr int MAX_NUM_LAYER = 10;
 constexpr int VIA_SEG_SIZE = MAX_NUM_LAYER;
 constexpr realT INFINITY_DISTANCE = std::numeric_limits<realT>::infinity();
-constexpr int MAX_ROUTE_LEN_PER_PIN = 30;
-constexpr int MAX_NUM_TURNS = 10;
-constexpr int MAX_SCALE = 10;
+constexpr int MAX_NUM_TURNS = 15;
+constexpr int MAX_ROUTE_LEN_PER_PIN = (MAX_NUM_TURNS + 1) * 2;
+constexpr int MAX_SCALE = 5;
 
 // -------------------------------
 // Cuda smart ptr

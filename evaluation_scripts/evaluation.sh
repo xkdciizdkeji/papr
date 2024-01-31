@@ -5,6 +5,6 @@ for data in "${data_list[@]}"
 do
     # run the whole framework
     echo "data: $data"
-    ./evaluator $input_path/$data.cap $input_path/$data.net $output_path/$data-3.out
+    ./evaluator $input_path/$data.cap $input_path/$data.net $output_path/$data-1.out
 done
 

@@ -113,8 +113,8 @@ __global__ static void sweepWire(realT *dist, int *prev, const realT *costSum, i
   }
 }
 
-__global__ static void sweepVia(realT *dist, int *prev, const realT *viaCost, int offsetX, int offsetY,
-                                int lenX, int lenY, int DIRECTION, int N, int X, int Y, int LAYER)
+__global__ static void sweepVia(realT *dist, int *prev, const realT *nonStackViaCost, realT unitViaCost,
+                                int offsetX, int offsetY, int lenX, int lenY, int DIRECTION, int N, int X, int Y, int LAYER)
 {
   int x = blockIdx.x * blockDim.x + threadIdx.x;
   int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -124,24 +124,43 @@ __global__ static void sweepVia(realT *dist, int *prev, const realT *viaCost, in
   y += offsetY;
 
   int p[MAX_NUM_LAYER];
-  realT d[MAX_NUM_LAYER], v[MAX_NUM_LAYER];
+  realT d[MAX_NUM_LAYER];
+  realT o[MAX_NUM_LAYER];
+  realT v = unitViaCost;
+  int n = LAYER;
   for (int z = 0; z < LAYER; z++)
   {
     p[z] = z;
     d[z] = dist[xyzToIdx(x, y, z, DIRECTION, N)];
-    v[z] = viaCost[xyzToIdx(x, y, z, DIRECTION, N)];
+    o[z] = nonStackViaCost[xyzToIdx(x, y, z, DIRECTION, N)];
   }
-  for (int z = 1; z < LAYER; z++)
+  for (int i = 1, s = d[0], t, g = d[n - 1], h; i < n; i++)
   {
-    if (d[z] > d[z - 1] + v[z])
+    // ascend
+    t = s;
+    s = d[i];
+    if (d[i] > t + v)
     {
-      d[z] = d[z - 1] + v[z];
-      p[z] = p[z - 1];
+      d[i] = t + v;
+      p[i] = i - 1;
     }
-    if (d[LAYER - 1 - z] > d[LAYER - z] + v[LAYER - z])
+    if (d[i] > d[i - 1] + v + o[i - 1])
     {
-      d[LAYER - 1 - z] = d[LAYER - z] + v[LAYER - z];
-      p[LAYER - 1 - z] = p[LAYER - z];
+      d[i] = d[i - 1] + v + o[i - 1];
+      p[i] = p[i - 1];
+    }
+    // descend
+    h = g;
+    g = d[n - i - 1];
+    if (d[n - i - 1] > h + v)
+    {
+      d[n - i - 1] = h + v;
+      p[n - i - 1] = n - i;
+    }
+    if (d[n - i - 1] > d[n - i] + v + o[n - i])
+    {
+      d[n - i - 1] = d[n - i] + v + o[n - i];
+      p[n - i - 1] = p[n - i];
     }
   }
   for (int z = 0; z < LAYER; z++)
@@ -254,9 +273,9 @@ bool BasicGamer::getIsRouted() const
                      { return x & y; });
 }
 
-void BasicGamer::route(const std::vector<int> &pinIndices, int sweepTurns)
+void BasicGamer::route(const std::vector<int> &pinIndices, int numTurns)
 {
-  route(pinIndices, sweepTurns, utils::BoxT<int>(0, 0, X, Y));
+  route(pinIndices, numTurns, utils::BoxT<int>(0, 0, X, Y));
 }
 
 void BasicGamer::route(const std::vector<int> &pinIndices, int numTurns, const utils::BoxT<int> &box)
@@ -287,10 +306,12 @@ void BasicGamer::route(const std::vector<int> &pinIndices, int numTurns, const u
     {
       if (turn & 1)
         sweepWire<<<maxlen, std::min(1024, maxlen / 2), maxlen * (2 * sizeof(realT) + 2 * sizeof(int))>>>(
-            devDist.get(), devAllPrev.get() + turn * LAYER * N * N, devWireCostSum.get(), offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER);
+            devDist.get(), devAllPrev.get() + turn * LAYER * N * N, devWireCostSum.get(),
+            offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER);
       else
         sweepVia<<<dim3((lenX + 31) / 32, (lenY + 31) / 32, 1), dim3(32, 32, 1)>>>(
-            devDist.get(), devAllPrev.get() + turn * LAYER * N * N, devViaCost.get(), offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER);
+            devDist.get(), devAllPrev.get() + turn * LAYER * N * N, devNonStackViaCost.get(), unitViaCost,
+            offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER);
     }
     tracePath<<<1, 1>>>(
         devMark.get(), devIsRoutedPin.get(), devRoutes.get(), devDist.get(), devAllPrev.get(), devPinIndices.get(),
@@ -298,6 +319,5 @@ void BasicGamer::route(const std::vector<int> &pinIndices, int numTurns, const u
     cleanDist<<<dim3((lenX + 31) / 32, (lenY + 31) / 32, LAYER), dim3(32, 32, 1)>>>(
         devDist.get(), devMark.get(), offsetX, offsetY, lenX, lenY, DIRECTION, N, X, Y, LAYER);
   }
-  checkCudaErrors(cudaDeviceSynchronize());
 }
 #endif
