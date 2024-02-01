@@ -217,9 +217,10 @@ void GridGraph::commitWire(const int layerIndex, const utils::PointT<int> lower,
 #ifdef CONGESTION_UPDATE
     if(checkOverflow(layerIndex, lower.x, lower.y)){
         congestionView[direction][lower.x][lower.y] = true;
-    }else{
-        congestionView[direction][lower.x][lower.y] = false;
     }
+    // else{
+    //     congestionView[direction][lower.x][lower.y] = false;
+    // }
 #endif
     DBU edgeLength = getEdgeLength(direction, lower[direction]);
     totalLength += (reverse ? -edgeLength : edgeLength);
@@ -459,6 +460,26 @@ void GridGraph::extractCongestionView(GridGraphView<bool> &view) const
         }
     }
 }
+
+// void GridGraph::extractCongestionView() const
+// {
+//     // view.assign(2, vector<vector<bool>>(xSize, vector<bool>(ySize, false)));
+//     for (int layerIndex = parameters.min_routing_layer; layerIndex < nLayers; layerIndex++)
+//     {
+//         unsigned direction = getLayerDirection(layerIndex);
+//         for (int x = 0; x < xSize; x++)
+//         {
+//             for (int y = 0; y < ySize; y++)
+//             {
+//                 if (checkOverflow(layerIndex, x, y))
+//                 {
+//                     congestionView[direction][x][y] = true;
+//                 }
+//             }
+//         }
+//     }
+// }
+
 
 void GridGraph::extractWireCostView(GridGraphView<CostT> &view) const
 {

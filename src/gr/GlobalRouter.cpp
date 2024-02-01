@@ -67,7 +67,7 @@ void GlobalRouter::route()
     for (auto id : netIndices)
         routers.emplace_back(nets[id]);
 
-    vector<vector<int>> batches = getBatches(routers, netIndices, numofThreads);
+    vector<vector<int> > batches = getBatches(routers, netIndices, numofThreads);
     // double t_batch = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t_b_b).count();
     // std::ofstream outputFile("batches.txt");
     // if (outputFile.is_open())
@@ -186,13 +186,12 @@ void GlobalRouter::route()
     if (netIndices.size() > 0)
     {
         log() << "stage 2: pattern routing with possible detours" << std::endl;
-        GridGraphView<bool> congestionView; // (2d) direction -> x -> y -> has overflow?
 #ifndef CONGESTION_UPDATE
+        GridGraphView<bool> congestionView; // (2d) direction -> x -> y -> has overflow?
         gridGraph.extractCongestionView(congestionView);
-        // for (const int netIndex : netIndices) {
-        //     GRNet& net = nets[netIndex];
-        //     gridGraph.commitTree(net.getRoutingTree(), true);
-        // }
+#else
+        log() << "update congestion view" << std::endl;
+        gridGraph.extractCongestionView(gridGraph.congestionView);
 #endif
 #ifndef ENABLE_ISSSORT
         sortNetIndices(netIndices);
@@ -201,24 +200,10 @@ void GlobalRouter::route()
         sortNetIndicesOFDALD(netIndices, netOverflows);
         // sortNetIndicesOFDALI(netIndices, netOverflows);
 #endif
-        // for (const int netIndex : netIndices)
-        // {
-        //     GRNet &net = nets[netIndex];
-        //     gridGraph.commitTree(net.getRoutingTree(), true);
-        //     PatternRoute patternRoute(net, gridGraph, parameters);
-        //     patternRoute.constructSteinerTree();
-        //     patternRoute.constructRoutingDAG();
-        //     patternRoute.constructDetours(congestionView); // KEY DIFFERENCE compared to stage 1
-        //     patternRoute.run();
-        //     gridGraph.commitTree(net.getRoutingTree());
-        // }
 
         routers.clear();
         batches.clear();
         PatternRoutes.clear();
-        // log()<<"routers size:"<<routers.size()<<std::endl;
-        // log()<<"batches size:"<<batches.size()<<std::endl;
-        // log()<<"PatternRoutes size:"<<PatternRoutes.size()<<std::endl;
         routers.reserve(netIndices.size());
         for (auto id : netIndices)
             routers.emplace_back(nets[id]);
@@ -227,7 +212,6 @@ void GlobalRouter::route()
         for (const int netIndex : netIndices)
         {
             GRNet &net = nets[netIndex];
-            // gridGraph.commitTree(net.getRoutingTree(), true);
             PatternRoute patternRoute(net, gridGraph, parameters);
             patternRoute.constructSteinerTree();
             PatternRoutes.insert(std::make_pair(netIndex, patternRoute));
@@ -246,23 +230,17 @@ void GlobalRouter::route()
                         gridGraph.commitTree(net.getRoutingTree()); });
         }
 #else
-        std::mutex mtx;
         for (const vector<int> &batch : batches)
         {
             runJobsMT(batch.size(), numofThreads, [&](int jobIdx)
                       {
                         GRNet &net = nets[batch[jobIdx]];
-                        mtx.lock();
                         gridGraph.commitTree(net.getRoutingTree(), true);
-                        congestionView = gridGraph.congestionView;
-                        mtx.unlock();
                         auto patternRoute = PatternRoutes.find(batch[jobIdx])->second;
                         patternRoute.constructRoutingDAG();
-                        patternRoute.constructDetours(congestionView);
+                        patternRoute.constructDetours(gridGraph.congestionView);
                         patternRoute.run();
-                        mtx.lock();
-                        gridGraph.commitTree(net.getRoutingTree());
-                        mtx.unlock(); });
+                        gridGraph.commitTree(net.getRoutingTree()); });
         }
 #endif
 
@@ -484,98 +462,8 @@ void GlobalRouter::sortNetIndicesOLI(vector<int> &netIndices) const
 //     std::shuffle(netIndices.begin(), netIndices.end(), gen);
 // }
 
-// void GlobalRouter::getGuides(const GRNet& net, vector<std::pair<int, utils::BoxT<int>>>& guides) {
-//     auto& routingTree = net.getRoutingTree();
-//     if (!routingTree) return;
-//     // 0. Basic guides
-//     GRTreeNode::preorder(routingTree, [&](std::shared_ptr<GRTreeNode> node) {
-//         for (const auto& child : node->children) {
-//             if (node->layerIdx == child->layerIdx) {
-//                 guides.emplace_back(
-//                     node->layerIdx, utils::BoxT<int>(
-//                         min(node->x, child->x), min(node->y, child->y),
-//                         max(node->x, child->x), max(node->y, child->y)
-//                     )
-//                 );
-//             } else {
-//                 int maxLayerIndex = max(node->layerIdx, child->layerIdx);
-//                 for (int layerIdx = min(node->layerIdx, child->layerIdx); layerIdx <= maxLayerIndex; layerIdx++) {
-//                     guides.emplace_back(layerIdx, utils::BoxT<int>(node->x, node->y));
-//                 }
-//             }
-//         }
-//     });
 
-//     auto getSpareResource = [&] (const GRPoint& point) {
-//         double resource = std::numeric_limits<double>::max();
-//         unsigned direction = gridGraph.getLayerDirection(point.layerIdx);
-//         if (point[direction] + 1 < gridGraph.getSize(direction)) {
-//             resource = min(resource, gridGraph.getEdge(point.layerIdx, point.x, point.y).getResource());
-//         }
-//         if (point[direction] > 0) {
-//             GRPoint lower = point;
-//             lower[direction] -= 1;
-//             resource = min(resource, gridGraph.getEdge(lower.layerIdx, point.x, point.y).getResource());
-//         }
-//         return resource;
-//     };
-
-//     // 1. Pin access patches
-//     assert(parameters.min_routing_layer + 1 < gridGraph.getNumLayers());
-//     for (auto& gpts : net.getPinAccessPoints()) {
-//         for (auto& gpt : gpts) {
-//             if (gpt.layerIdx < parameters.min_routing_layer) {
-//                 int padding = 0;
-//                 if (getSpareResource({parameters.min_routing_layer, gpt.x, gpt.y}) < parameters.pin_patch_threshold) {
-//                     padding = parameters.pin_patch_padding;
-//                 }
-//                 for (int layerIdx = gpt.layerIdx; layerIdx <= parameters.min_routing_layer + 1; layerIdx++) {
-//                     guides.emplace_back(layerIdx, utils::BoxT<int>(
-//                         max(gpt.x - padding, 0),
-//                         max(gpt.y - padding, 0),
-//                         min(gpt.x + padding, (int)gridGraph.getSize(0) - 1),
-//                         min(gpt.y + padding, (int)gridGraph.getSize(1) - 1)
-//                     ));
-//                     areaOfPinPatches += (guides.back().second.x.range() + 1) * (guides.back().second.y.range() + 1);
-//                 }
-//             }
-//         }
-//     }
-
-//     // 2. Wire segment patches
-//     GRTreeNode::preorder(routingTree, [&](std::shared_ptr<GRTreeNode> node) {
-//         for (const auto& child : node->children) {
-//             if (node->layerIdx == child->layerIdx) {
-//                 double wire_patch_threshold = parameters.wire_patch_threshold;
-//                 unsigned direction = gridGraph.getLayerDirection(node->layerIdx);
-//                 int l = min((*node)[direction], (*child)[direction]);
-//                 int h = max((*node)[direction], (*child)[direction]);
-//                 int r = (*node)[1 - direction];
-//                 for (int c = l; c <= h; c++) {
-//                     bool patched = false;
-//                     GRPoint point = (direction == MetalLayer::H ? GRPoint(node->layerIdx, c, r) : GRPoint(node->layerIdx, r, c));
-//                     if (getSpareResource(point) < wire_patch_threshold) {
-//                         for (int layerIndex = node->layerIdx - 1; layerIndex <= node->layerIdx + 1; layerIndex += 2) {
-//                             if (layerIndex < parameters.min_routing_layer || layerIndex >= gridGraph.getNumLayers()) continue;
-//                             if (getSpareResource({layerIndex, point.x, point.y}) >= 1.0) {
-//                                 guides.emplace_back(layerIndex, utils::BoxT<int>(point.x, point.y));
-//                                 areaOfWirePatches += 1;
-//                                 patched = true;
-//                             }
-//                         }
-//                     }
-//                     if (patched) {
-//                         wire_patch_threshold = parameters.wire_patch_threshold;
-//                     } else {
-//                         wire_patch_threshold *= parameters.wire_patch_inflation_rate;
-//                     }
-//                 }
-//             }
-//         }
-//     });
-// }
-
-void GlobalRouter::getGuides(const GRNet &net, vector<std::pair<std::pair<int, int>, utils::BoxT<int>>> &guides)
+void GlobalRouter::getGuides(const GRNet &net, vector<std::pair<std::pair<int, int>, utils::BoxT<int> > > &guides)
 {
     auto &routingTree = net.getRoutingTree();
     if (!routingTree)
@@ -618,7 +506,7 @@ void GlobalRouter::getGuides(const GRNet &net, vector<std::pair<std::pair<int, i
     };
 }
 
-void GlobalRouter::getGuide(const GRNet &net, std::vector<std::array<int, 6>> &guide)
+void GlobalRouter::getGuide(const GRNet &net, std::vector<std::array<int, 6> > &guide)
 {
     guide.clear();
     auto tree = net.getRoutingTree();
@@ -656,18 +544,18 @@ void GlobalRouter::printStatistics() const
     // wire length and via count
     uint64_t wireLength = 0;
     int viaCount = 0;
-    vector<vector<vector<int>>> wireUsage;
-    vector<vector<vector<int>>> nonstack_via_counter;
-    vector<vector<vector<int>>> flag;
+    vector<vector<vector<int> > > wireUsage;
+    vector<vector<vector<int> > > nonstack_via_counter;
+    vector<vector<vector<int> > > flag;
     wireUsage.assign(
-        gridGraph.getNumLayers(), vector<vector<int>>(gridGraph.getSize(0), vector<int>(gridGraph.getSize(1), 0)));
+        gridGraph.getNumLayers(), vector<vector<int> >(gridGraph.getSize(0), vector<int>(gridGraph.getSize(1), 0)));
     nonstack_via_counter.assign(
-        gridGraph.getNumLayers(), vector<vector<int>>(gridGraph.getSize(0), vector<int>(gridGraph.getSize(1), 0)));
+        gridGraph.getNumLayers(), vector<vector<int> >(gridGraph.getSize(0), vector<int>(gridGraph.getSize(1), 0)));
     flag.assign(
-        gridGraph.getNumLayers(), vector<vector<int>>(gridGraph.getSize(0), vector<int>(gridGraph.getSize(1), -1)));
+        gridGraph.getNumLayers(), vector<vector<int> >(gridGraph.getSize(0), vector<int>(gridGraph.getSize(1), -1)));
     for (const auto &net : nets)
     {
-        vector<vector<int>> via_loc;
+        vector<vector<int> > via_loc;
         if (net.getRoutingTree() == nullptr)
         {
             log() << "ERROR: null GRTree net(id=" << net.getIndex() << "\n";
@@ -779,7 +667,7 @@ void GlobalRouter::write(std::string guide_file)
     areaOfPinPatches = 0;
     areaOfWirePatches = 0;
     std::stringstream ss;
-    std::vector<std::array<int, 6>> guide;
+    std::vector<std::array<int, 6> > guide;
     for (const GRNet &net : nets)
     {
         getGuide(net, guide);
@@ -798,9 +686,9 @@ void GlobalRouter::write(std::string guide_file)
 }
 
 void GlobalRouter::update_nonstack_via_counter(unsigned net_idx,
-                                               const std::vector<vector<int>> &via_loc,
-                                               std::vector<std::vector<std::vector<int>>> &flag,
-                                               std::vector<std::vector<std::vector<int>>> &nonstack_via_counter) const
+                                               const std::vector<vector<int> > &via_loc,
+                                               std::vector<std::vector<std::vector<int> > > &flag,
+                                               std::vector<std::vector<std::vector<int> > > &nonstack_via_counter) const
 {
     for (const auto &pp : via_loc)
     {
@@ -846,10 +734,10 @@ void GlobalRouter::update_nonstack_via_counter(unsigned net_idx,
     }
 }
 
-vector<vector<int>> GlobalRouter::getBatches(vector<SingleNetRouter> &routers, const vector<int> &netsToRoute, int numofThreads)
+vector<vector<int> > GlobalRouter::getBatches(vector<SingleNetRouter> &routers, const vector<int> &netsToRoute, int numofThreads)
 {
     vector<int> batch(netsToRoute.size());
-    vector<vector<int>> batches;
+    vector<vector<int> > batches;
     if (numofThreads == 1)
     {
         batches.emplace_back(netsToRoute);
@@ -926,7 +814,7 @@ void GlobalRouter::runJobsMT(int numJobs, int numofThreads, const std::function<
 //         });
 //    }
 
-void GlobalRouter::runJobsMTnew(std::vector<std::vector<int>> batches, const std::function<void(int)> &handle)
+void GlobalRouter::runJobsMTnew(std::vector<std::vector<int> > batches, const std::function<void(int)> &handle)
 {
     auto thread_func = [&](std::vector<int> batch)
     {

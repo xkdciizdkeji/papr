@@ -96,7 +96,7 @@ public:
     // 2D maps
     void extractBlockageView(GridGraphView<bool>& view) const;
     void extractCongestionView(GridGraphView<bool>& view) const; // 2D overflow look-up table
-    void extractWireCostView(GridGraphView<CostT>& view) const;
+    void extractWireCostView(GridGraphView<CostT> &view) const;
     void updateWireCostView(GridGraphView<CostT>& view, std::shared_ptr<GRTreeNode> routingTree) const;
 
     // For visualization
