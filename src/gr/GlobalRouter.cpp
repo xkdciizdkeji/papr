@@ -219,7 +219,7 @@ void GlobalRouter::route()
 
 
             outfb<< patternRoute.getsT()->getPythonStringfixed(patternRoute.getsT())<<std::endl;
-            patternRoute.constructRoutingDAGfixed(choosed_pattern_index_array,two_pin_net_index);//把这句注释掉，下一句不注释就是原版
+            patternRoute.constructRoutingDAGfixed(choosed_pattern_index_array,two_pin_net_index);
             //patternRoute.constructRoutingDAG();
             
             // outfa<< patternRoute.getsT()->getPythonStringfixed(patternRoute.getsT())<<std::endl;
