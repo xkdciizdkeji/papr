@@ -1,0 +1,524 @@
+[   0.000] 
+[   0.000] 
+[   0.000] GLOBAL ROUTER CUGR
+[   0.000] 
+[   0.000] 
+[   0.000] cap file: /home/fengjx/eda/Simple_inputs//ariane133_51.cap
+[   0.000] net file: /home/fengjx/eda/Simple_inputs//ariane133_51.net
+[   0.000] output  : /home/fengjx/eda/Simple_inputs/PR_output/gpu+iss/ariane133_51.PR_output
+[   0.000] threads : 1
+[   0.000] 
+[   0.000] parsing...
+[   0.877] Finished parsing
+[   0.877] MEM: cur=117.086MB, peak=117.086MB
+[   0.877] 
+[   0.877] design statistics
+[   0.877] - - - - - - - - - -
+[   0.877] num of nets :        128673
+[   0.877] gcell grid:          844 x 1144 x 10
+[   0.877] unit length wire:    0.00131579
+[   0.877] unit via:            4
+[   0.877] 
+[   1.069] stage 1: pattern routing
+[   1.559] stage 1: pattern routing:cpp_write_txt_time: 0.483001
+[844, 1144]
+844
+1144
+tensor(indices=tensor([[ 54397,  55541,  55541,  ..., 250877, 252021, 253165],
+                       [     0,      0,      0,  ..., 645661, 645661, 645661]]),
+       values=tensor([1., 1., 1.,  ..., 1., 1., 1.]),
+       size=(1931072, 645662), nnz=7432608, layout=torch.sparse_coo)
+No. 1 time,the loss is  2690296.5
+No. 2 time,the loss is  2684954.0
+No. 3 time,the loss is  2679237.25
+No. 4 time,the loss is  2675680.75
+No. 5 time,the loss is  2673142.75
+No. 6 time,the loss is  2670163.25
+No. 7 time,the loss is  2664616.5
+No. 8 time,the loss is  2663925.0
+No. 9 time,the loss is  2658220.25
+No. 10 time,the loss is  2657683.5
+No. 11 time,the loss is  2656199.75
+No. 12 time,the loss is  2651727.0
+No. 13 time,the loss is  2647754.5
+two_pin_net_num: 322831
+loss中线长的部分: 0
+loss中overf惩罚项部分: tensor(2647915.7500, device='cuda:0', grad_fn=<SumBackward0>)
+tensor([[0.1408, 0.8592],
+        [0.2376, 0.7624],
+        [0.3120, 0.6880],
+        ...,
+        [0.7662, 0.2338],
+        [0.5709, 0.4291],
+        [0.5260, 0.4740]])
+tensor([1, 1, 1,  ..., 0, 0, 0])
+python_script_read_txt_time: 7.33850884437561
+python_script_runtime: 7.650161266326904
+python_script_write_txt_time: 0.3653678894042969
+[  18.967] stage 1: pattern routing:call_python_script_total_time: 17.4079
+[  18.977] stage 1: pattern routing:cpp_read_txt_time: 0.00951131
+[  20.706] 4400 / 128673 nets have overflows.
+[  20.706] 
+[  20.706] stage 2: pattern routing with possible detours
+[  20.717] sort net indices with OFDALD
+[  22.129] 253 / 128673 nets have overflows.
+[  22.129] 
+[  22.129] stage 3: gpu maze routing
+[  23.360] gamer info. routing ...
+[  24.491] gamer info. routing done
+[  24.491] gamer info. commiting gamer's result ...
+[  24.517] gamer info. commiting done
+[  24.517] 65 / 128673 nets have overflows.
+[  24.524] step routed #nets: 128673, 4400, 253
+[  24.524] step time consumption: 19.679 s, 1.423 s, 2.395 s
+[  24.524] routing statistics
+[  24.524] - - - - - - - - - -
+[  24.830] Layer = 1, num_overflows = 2420, layer_overflows = 33051.274, overflow cost = 3305.127
+[  24.835] Layer = 2, num_overflows = 3876, layer_overflows = 26756.360, overflow cost = 5980.763
+[  24.840] Layer = 3, num_overflows = 1356, layer_overflows = 37016.513, overflow cost = 9682.415
+[  24.845] Layer = 4, num_overflows = 9, layer_overflows = 104458.702, overflow cost = 20128.285
+[  24.852] Layer = 5, num_overflows = 0, layer_overflows = 46115.639, overflow cost = 24739.849
+[  24.857] Layer = 6, num_overflows = 2, layer_overflows = 432184.170, overflow cost = 67958.266
+[  24.863] Layer = 7, num_overflows = 0, layer_overflows = 318836.478, overflow cost = 99841.914
+[  24.870] Layer = 8, num_overflows = 10, layer_overflows = 510963.159, overflow cost = 150938.230
+[  24.876] Layer = 9, num_overflows = 0, layer_overflows = 554060.779, overflow cost = 206344.307
+[  24.876] wire cost:                9347437.331
+[  24.876] via cost:                 4011200.000
+[  24.876] overflow cost:            206344.307
+[  24.876] total cost(ispd24 score): 13564981.639
+[  24.876] 
+[  24.953] generating route guides...
+[  25.310] 
+[  25.310] writing output...
+[  25.345] finished writing output...
+[  25.345] 
+[  25.345] Terminated.
+[  25.345] - - - - - - - - - -
+[  25.345] MEM: cur=572.086MB, peak=823.426MB
+[  25.345] 
+use evaluator test data: layer 0 name=metal1  min_length=400.00 dir=0
+use evaluator test data: layer 1 name=metal2  min_length=400.00 dir=1
+use evaluator test data: layer 2 name=metal3  min_length=400.00 dir=0
+use evaluator test data: layer 3 name=metal4  min_length=400.00 dir=1
+use evaluator test data: layer 4 name=metal5  min_length=400.00 dir=0
+use evaluator test data: layer 5 name=metal6  min_length=400.00 dir=1
+use evaluator test data: layer 6 name=metal7  min_length=400.00 dir=0
+use evaluator test data: layer 7 name=metal8  min_length=400.00 dir=1
+use evaluator test data: layer 8 name=metal9  min_length=400.00 dir=0
+use evaluator test data: layer 9 name=metal10  min_length=400.00 dir=1
+use evaluator test data: Num nets = 128673
+use evaluator test data: Grid Graph Size (x, y, z)= 844 x 1144 x 10
+use evaluator test data: Layer = 1, layer_overflows = 33051.273581, overflow cost = 3305.127358
+use evaluator test data: Layer = 2, layer_overflows = 26756.217573, overflow cost = 5980.749115
+use evaluator test data: Layer = 3, layer_overflows = 37016.513069, overflow cost = 9682.400422
+use evaluator test data: Layer = 4, layer_overflows = 104458.702438, overflow cost = 20128.270666
+use evaluator test data: Layer = 5, layer_overflows = 46115.639170, overflow cost = 24739.834583
+use evaluator test data: Layer = 6, layer_overflows = 432184.170456, overflow cost = 67958.251629
+use evaluator test data: Layer = 7, layer_overflows = 318836.477940, overflow cost = 99841.899423
+use evaluator test data: Layer = 8, layer_overflows = 510963.159339, overflow cost = 150938.215357
+use evaluator test data: Layer = 9, layer_overflows = 554060.778729, overflow cost = 206344.293230
+use evaluator test data: Number of open nets : 0
+use evaluator test data: Number of incompleted nets : 0
+use evaluator test data: wirelength cost 9347437.3311
+use evaluator test data: via cost 4011200.0000
+use evaluator test data: overflow cost 206344.2932
+use evaluator test data: total cost 13564981.6243
+[   0.000] 
+[   0.000] 
+[   0.000] GLOBAL ROUTER CUGR
+[   0.000] 
+[   0.000] 
+[   0.000] cap file: /home/fengjx/eda/Simple_inputs//ariane133_68.cap
+[   0.000] net file: /home/fengjx/eda/Simple_inputs//ariane133_68.net
+[   0.000] output  : /home/fengjx/eda/Simple_inputs/PR_output/gpu+iss/ariane133_68.PR_output
+[   0.000] threads : 1
+[   0.000] 
+[   0.000] parsing...
+[   0.746] Finished parsing
+[   0.746] MEM: cur=97.6445MB, peak=97.6445MB
+[   0.746] 
+[   0.746] design statistics
+[   0.746] - - - - - - - - - -
+[   0.746] num of nets :        127026
+[   0.746] gcell grid:          716 x 971 x 10
+[   0.746] unit length wire:    0.00131579
+[   0.746] unit via:            4
+[   0.746] 
+[   0.852] stage 1: pattern routing
+[   1.265] stage 1: pattern routing:cpp_write_txt_time: 0.407712
+[716, 971]
+716
+971
+tensor(indices=tensor([[103057, 104028, 103057,  ..., 345076, 345076, 345076],
+                       [     0,      0,      0,  ..., 595433, 595433, 595433]]),
+       values=tensor([1., 1., 1.,  ..., 1., 1., 1.]),
+       size=(1390472, 595434), nnz=7225464, layout=torch.sparse_coo)
+No. 1 time,the loss is  2563601.0
+No. 2 time,the loss is  2555825.0
+No. 3 time,the loss is  2549488.75
+No. 4 time,the loss is  2543769.5
+No. 5 time,the loss is  2538549.5
+No. 6 time,the loss is  2534389.5
+No. 7 time,the loss is  2530783.0
+No. 8 time,the loss is  2525608.0
+No. 9 time,the loss is  2523384.25
+No. 10 time,the loss is  2520142.5
+No. 11 time,the loss is  2515251.5
+No. 12 time,the loss is  2512284.0
+No. 13 time,the loss is  2508567.5
+No. 14 time,the loss is  2504829.0
+No. 15 time,the loss is  2503412.5
+No. 16 time,the loss is  2500540.75
+No. 17 time,the loss is  2498534.0
+No. 18 time,the loss is  2495280.75
+No. 19 time,the loss is  2493093.0
+two_pin_net_num: 297717
+loss中线长的部分: 0
+loss中overf惩罚项部分: tensor(2493515., device='cuda:0', grad_fn=<SumBackward0>)
+tensor([[0.1127, 0.8873],
+        [0.3641, 0.6359],
+        [0.2965, 0.7035],
+        ...,
+        [0.5705, 0.4295],
+        [0.2791, 0.7209],
+        [0.7618, 0.2382]])
+tensor([1, 1, 1,  ..., 0, 1, 0])
+python_script_read_txt_time: 6.8817408084869385
+python_script_runtime: 7.99540114402771
+python_script_write_txt_time: 0.34786319732666016
+[  18.279] stage 1: pattern routing:call_python_script_total_time: 17.0142
+[  18.288] stage 1: pattern routing:cpp_read_txt_time: 0.00861216
+[  20.359] 7813 / 127026 nets have overflows.
+[  20.359] 
+[  20.359] stage 2: pattern routing with possible detours
+[  20.366] sort net indices with OFDALD
+[  22.637] 392 / 127026 nets have overflows.
+[  22.637] 
+[  22.637] stage 3: gpu maze routing
+[  23.482] gamer info. routing ...
+[  25.082] gamer info. routing done
+[  25.082] gamer info. commiting gamer's result ...
+[  25.118] gamer info. commiting done
+[  25.118] 159 / 127026 nets have overflows.
+[  25.124] step routed #nets: 127026, 7813, 392
+[  25.124] step time consumption: 19.539 s, 2.278 s, 2.486 s
+[  25.124] routing statistics
+[  25.124] - - - - - - - - - -
+[  25.415] Layer = 1, num_overflows = 2357, layer_overflows = 29797.240, overflow cost = 2979.724
+[  25.419] Layer = 2, num_overflows = 4122, layer_overflows = 24007.157, overflow cost = 5380.440
+[  25.423] Layer = 3, num_overflows = 2701, layer_overflows = 30080.214, overflow cost = 8388.461
+[  25.427] Layer = 4, num_overflows = 57, layer_overflows = 88969.361, overflow cost = 17285.397
+[  25.433] Layer = 5, num_overflows = 19, layer_overflows = 37455.539, overflow cost = 21030.951
+[  25.439] Layer = 6, num_overflows = 2, layer_overflows = 312829.516, overflow cost = 52313.903
+[  25.445] Layer = 7, num_overflows = 0, layer_overflows = 231124.178, overflow cost = 75426.320
+[  25.450] Layer = 8, num_overflows = 10, layer_overflows = 367617.310, overflow cost = 112188.051
+[  25.455] Layer = 9, num_overflows = 0, layer_overflows = 399163.199, overflow cost = 152104.371
+[  25.455] wire cost:                9547615.023
+[  25.455] via cost:                 3813212.000
+[  25.455] overflow cost:            152104.371
+[  25.455] total cost(ispd24 score): 13512931.394
+[  25.455] 
+[  25.539] generating route guides...
+[  25.894] 
+[  25.894] writing output...
+[  25.934] finished writing output...
+[  25.934] 
+[  25.934] Terminated.
+[  25.934] - - - - - - - - - -
+[  25.934] MEM: cur=497.484MB, peak=692.375MB
+[  25.934] 
+use evaluator test data: layer 0 name=metal1  min_length=400.00 dir=0
+use evaluator test data: layer 1 name=metal2  min_length=400.00 dir=1
+use evaluator test data: layer 2 name=metal3  min_length=400.00 dir=0
+use evaluator test data: layer 3 name=metal4  min_length=400.00 dir=1
+use evaluator test data: layer 4 name=metal5  min_length=400.00 dir=0
+use evaluator test data: layer 5 name=metal6  min_length=400.00 dir=1
+use evaluator test data: layer 6 name=metal7  min_length=400.00 dir=0
+use evaluator test data: layer 7 name=metal8  min_length=400.00 dir=1
+use evaluator test data: layer 8 name=metal9  min_length=400.00 dir=0
+use evaluator test data: layer 9 name=metal10  min_length=400.00 dir=1
+use evaluator test data: Num nets = 127026
+use evaluator test data: Grid Graph Size (x, y, z)= 716 x 971 x 10
+use evaluator test data: Layer = 1, layer_overflows = 29797.240450, overflow cost = 2979.724045
+use evaluator test data: Layer = 2, layer_overflows = 24006.538938, overflow cost = 5380.377939
+use evaluator test data: Layer = 3, layer_overflows = 30080.213554, overflow cost = 8388.399294
+use evaluator test data: Layer = 4, layer_overflows = 88969.360763, overflow cost = 17285.335371
+use evaluator test data: Layer = 5, layer_overflows = 37455.538924, overflow cost = 21030.889263
+use evaluator test data: Layer = 6, layer_overflows = 312829.516132, overflow cost = 52313.840876
+use evaluator test data: Layer = 7, layer_overflows = 231124.177907, overflow cost = 75426.258667
+use evaluator test data: Layer = 8, layer_overflows = 367617.310181, overflow cost = 112187.989685
+use evaluator test data: Layer = 9, layer_overflows = 399163.198529, overflow cost = 152104.309538
+use evaluator test data: Number of open nets : 0
+use evaluator test data: Number of incompleted nets : 0
+use evaluator test data: wirelength cost 9547615.0230
+use evaluator test data: via cost 3813212.0000
+use evaluator test data: overflow cost 152104.3095
+use evaluator test data: total cost 13512931.3325
+[   0.000] 
+[   0.000] 
+[   0.000] GLOBAL ROUTER CUGR
+[   0.000] 
+[   0.000] 
+[   0.000] cap file: /home/fengjx/eda/Simple_inputs//mempool_tile.cap
+[   0.000] net file: /home/fengjx/eda/Simple_inputs//mempool_tile.net
+[   0.000] output  : /home/fengjx/eda/Simple_inputs/PR_output/gpu+iss/mempool_tile.PR_output
+[   0.000] threads : 1
+[   0.000] 
+[   0.000] parsing...
+[   0.453] Finished parsing
+[   0.453] MEM: cur=75.6992MB, peak=77.5039MB
+[   0.453] 
+[   0.453] design statistics
+[   0.453] - - - - - - - - - -
+[   0.453] num of nets :        135919
+[   0.453] gcell grid:          475 x 644 x 10
+[   0.453] unit length wire:    0.00131579
+[   0.453] unit via:            4
+[   0.453] 
+[   0.537] stage 1: pattern routing
+[   0.999] stage 1: pattern routing:cpp_write_txt_time: 0.456601
+[475, 644]
+475
+644
+tensor(indices=tensor([[277689, 277689, 277689,  ..., 267064, 267708, 268352],
+                       [     0,      0,      0,  ..., 741941, 741941, 741941]]),
+       values=tensor([1., 1., 1.,  ..., 1., 1., 1.]),
+       size=(611800, 741942), nnz=7440460, layout=torch.sparse_coo)
+No. 1 time,the loss is  2973709.25
+No. 2 time,the loss is  2970906.5
+No. 3 time,the loss is  2969578.5
+No. 4 time,the loss is  2966177.75
+No. 5 time,the loss is  2965540.0
+No. 6 time,the loss is  2963271.0
+No. 7 time,the loss is  2961983.0
+No. 8 time,the loss is  2960104.0
+No. 9 time,the loss is  2959637.0
+No. 10 time,the loss is  2957717.0
+No. 11 time,the loss is  2955850.5
+two_pin_net_num: 370971
+loss中线长的部分: 0
+loss中overf惩罚项部分: tensor(2956150., device='cuda:0', grad_fn=<SumBackward0>)
+tensor([[0.9742, 0.0258],
+        [0.6377, 0.3623],
+        [0.6515, 0.3485],
+        ...,
+        [0.2960, 0.7040],
+        [0.7254, 0.2746],
+        [0.7077, 0.2923]])
+tensor([0, 0, 0,  ..., 1, 0, 0])
+python_script_read_txt_time: 8.735718011856079
+python_script_runtime: 7.372241497039795
+python_script_write_txt_time: 0.4098200798034668
+[  19.157] stage 1: pattern routing:call_python_script_total_time: 18.158
+[  19.167] stage 1: pattern routing:cpp_read_txt_time: 0.0103766
+[  21.126] 5075 / 135919 nets have overflows.
+[  21.126] 
+[  21.126] stage 2: pattern routing with possible detours
+[  21.129] sort net indices with OFDALD
+[  22.533] 453 / 135919 nets have overflows.
+[  22.533] 
+[  22.533] stage 3: gpu maze routing
+[  23.071] gamer info. routing ...
+[  24.548] gamer info. routing done
+[  24.548] gamer info. commiting gamer's result ...
+[  24.576] gamer info. commiting done
+[  24.576] 403 / 135919 nets have overflows.
+[  24.579] step routed #nets: 135919, 5075, 453
+[  24.579] step time consumption: 20.624 s, 1.407 s, 2.046 s
+[  24.579] routing statistics
+[  24.579] - - - - - - - - - -
+[  24.820] Layer = 1, num_overflows = 1171, layer_overflows = 26735.815, overflow cost = 2673.581
+[  24.822] Layer = 2, num_overflows = 979, layer_overflows = 21247.436, overflow cost = 4798.325
+[  24.824] Layer = 3, num_overflows = 2365, layer_overflows = 637338.528, overflow cost = 68532.178
+[  24.826] Layer = 4, num_overflows = 23, layer_overflows = 42617.286, overflow cost = 72793.907
+[  24.827] Layer = 5, num_overflows = 24, layer_overflows = 16578.238, overflow cost = 74451.730
+[  24.829] Layer = 6, num_overflows = 3, layer_overflows = 138242.657, overflow cost = 88275.996
+[  24.830] Layer = 7, num_overflows = 6, layer_overflows = 101093.678, overflow cost = 98385.364
+[  24.832] Layer = 8, num_overflows = 4, layer_overflows = 162021.645, overflow cost = 114587.528
+[  24.835] Layer = 9, num_overflows = 0, layer_overflows = 175608.789, overflow cost = 132148.407
+[  24.835] wire cost:                8478443.431
+[  24.835] via cost:                 4527444.000
+[  24.835] overflow cost:            132148.407
+[  24.835] total cost(ispd24 score): 13138035.838
+[  24.835] 
+[  24.901] generating route guides...
+[  25.288] 
+[  25.288] writing output...
+[  25.327] finished writing output...
+[  25.328] 
+[  25.328] Terminated.
+[  25.328] - - - - - - - - - -
+[  25.328] MEM: cur=493.270MB, peak=579.871MB
+[  25.328] 
+use evaluator test data: layer 0 name=metal1  min_length=400.00 dir=0
+use evaluator test data: layer 1 name=metal2  min_length=400.00 dir=1
+use evaluator test data: layer 2 name=metal3  min_length=400.00 dir=0
+use evaluator test data: layer 3 name=metal4  min_length=400.00 dir=1
+use evaluator test data: layer 4 name=metal5  min_length=400.00 dir=0
+use evaluator test data: layer 5 name=metal6  min_length=400.00 dir=1
+use evaluator test data: layer 6 name=metal7  min_length=400.00 dir=0
+use evaluator test data: layer 7 name=metal8  min_length=400.00 dir=1
+use evaluator test data: layer 8 name=metal9  min_length=400.00 dir=0
+use evaluator test data: layer 9 name=metal10  min_length=400.00 dir=1
+use evaluator test data: Num nets = 135919
+use evaluator test data: Grid Graph Size (x, y, z)= 475 x 644 x 10
+use evaluator test data: Layer = 1, layer_overflows = 26735.814528, overflow cost = 2673.581453
+use evaluator test data: Layer = 2, layer_overflows = 21246.567572, overflow cost = 4798.238210
+use evaluator test data: Layer = 3, layer_overflows = 637338.528464, overflow cost = 68532.091056
+use evaluator test data: Layer = 4, layer_overflows = 42617.286224, overflow cost = 72793.819679
+use evaluator test data: Layer = 5, layer_overflows = 16578.237724, overflow cost = 74451.643451
+use evaluator test data: Layer = 6, layer_overflows = 138242.656727, overflow cost = 88275.909124
+use evaluator test data: Layer = 7, layer_overflows = 101093.677752, overflow cost = 98385.276899
+use evaluator test data: Layer = 8, layer_overflows = 162021.645078, overflow cost = 114587.441407
+use evaluator test data: Layer = 9, layer_overflows = 175608.788730, overflow cost = 132148.320280
+use evaluator test data: Number of open nets : 0
+use evaluator test data: Number of incompleted nets : 0
+use evaluator test data: wirelength cost 8478443.4308
+use evaluator test data: via cost 4527444.0000
+use evaluator test data: overflow cost 132148.3203
+use evaluator test data: total cost 13138035.7511
+[   0.000] 
+[   0.000] 
+[   0.000] GLOBAL ROUTER CUGR
+[   0.000] 
+[   0.000] 
+[   0.000] cap file: /home/fengjx/eda/Simple_inputs//nvdla.cap
+[   0.000] net file: /home/fengjx/eda/Simple_inputs//nvdla.net
+[   0.000] output  : /home/fengjx/eda/Simple_inputs/PR_output/gpu+iss/nvdla.PR_output
+[   0.000] threads : 1
+[   0.000] 
+[   0.000] parsing...
+[   1.512] Finished parsing
+[   1.512] MEM: cur=222.602MB, peak=222.602MB
+[   1.512] 
+[   1.512] design statistics
+[   1.512] - - - - - - - - - -
+[   1.512] num of nets :        176765
+[   1.512] gcell grid:          1240 x 1682 x 10
+[   1.512] unit length wire:    0.00131579
+[   1.512] unit via:            4
+[   1.512] 
+[   1.760] stage 1: pattern routing
+[   2.418] stage 1: pattern routing:cpp_write_txt_time: 0.651173
+[1240, 1682]
+1240
+1682
+tensor(indices=tensor([[760722, 760722, 760722,  ..., 229155, 229155, 229155],
+                       [     0,      0,      0,  ..., 941823, 941823, 941823]]),
+       values=tensor([1., 1., 1.,  ..., 1., 1., 1.]),
+       size=(4171360, 941824), nnz=14552578, layout=torch.sparse_coo)
+No. 1 time,the loss is  4959697.0
+No. 2 time,the loss is  4946853.5
+No. 3 time,the loss is  4935095.5
+No. 4 time,the loss is  4923750.0
+No. 5 time,the loss is  4911942.0
+No. 6 time,the loss is  4903102.5
+No. 7 time,the loss is  4894703.0
+No. 8 time,the loss is  4881510.0
+No. 9 time,the loss is  4873753.0
+No. 10 time,the loss is  4867903.5
+No. 11 time,the loss is  4860457.0
+No. 12 time,the loss is  4853985.0
+No. 13 time,the loss is  4845546.5
+No. 14 time,the loss is  4838855.0
+No. 15 time,the loss is  4833111.0
+No. 16 time,the loss is  4832491.5
+No. 17 time,the loss is  4825981.0
+No. 18 time,the loss is  4819198.5
+No. 19 time,the loss is  4814033.5
+No. 20 time,the loss is  4812854.5
+No. 21 time,the loss is  4806883.0
+No. 22 time,the loss is  4806113.0
+No. 23 time,the loss is  4803560.0
+No. 24 time,the loss is  4799926.5
+No. 25 time,the loss is  4797702.5
+No. 26 time,the loss is  4793475.0
+No. 27 time,the loss is  4791777.0
+No. 28 time,the loss is  4790295.5
+No. 29 time,the loss is  4789071.0
+No. 30 time,the loss is  4788179.5
+No. 31 time,the loss is  4786100.0
+No. 32 time,the loss is  4784649.5
+No. 33 time,the loss is  4782569.0
+two_pin_net_num: 470912
+loss中线长的部分: 0
+loss中overf惩罚项部分: tensor(4782787., device='cuda:0', grad_fn=<SumBackward0>)
+tensor([[0.0284, 0.9716],
+        [0.9435, 0.0565],
+        [0.7509, 0.2491],
+        ...,
+        [0.0399, 0.9601],
+        [0.3921, 0.6079],
+        [0.3612, 0.6388]])
+tensor([1, 0, 0,  ..., 1, 1, 1])
+python_script_read_txt_time: 15.593333959579468
+python_script_runtime: 23.26693820953369
+python_script_write_txt_time: 0.5478863716125488
+[  43.899] stage 1: pattern routing:call_python_script_total_time: 41.4809
+[  43.913] stage 1: pattern routing:cpp_read_txt_time: 0.0136905
+[  47.712] 13484 / 176765 nets have overflows.
+[  47.712] 
+[  47.712] stage 2: pattern routing with possible detours
+[  47.742] sort net indices with OFDALD
+[  55.781] 724 / 176765 nets have overflows.
+[  55.781] 
+[  55.781] stage 3: gpu maze routing
+[  57.305] gamer info. routing ...
+[  63.696] gamer info. routing done
+[  63.696] gamer info. commiting gamer's result ...
+[  63.760] gamer info. commiting done
+[  63.760] 393 / 176765 nets have overflows.
+[  63.771] step routed #nets: 176765, 13484, 724
+[  63.771] step time consumption: 45.983 s, 8.070 s, 7.990 s
+[  63.771] routing statistics
+[  63.771] - - - - - - - - - -
+[  64.305] Layer = 1, num_overflows = 1019, layer_overflows = 47342.407, overflow cost = 4734.241
+[  64.316] Layer = 2, num_overflows = 8049, layer_overflows = 44708.555, overflow cost = 9205.096
+[  64.329] Layer = 3, num_overflows = 10286, layer_overflows = 111323.770, overflow cost = 20337.473
+[  64.344] Layer = 4, num_overflows = 68, layer_overflows = 252513.890, overflow cost = 45588.862
+[  64.359] Layer = 5, num_overflows = 31, layer_overflows = 117727.803, overflow cost = 57361.642
+[  64.372] Layer = 6, num_overflows = 7, layer_overflows = 937239.272, overflow cost = 151085.570
+[  64.386] Layer = 7, num_overflows = 0, layer_overflows = 694121.694, overflow cost = 220497.739
+[  64.401] Layer = 8, num_overflows = 28, layer_overflows = 1105727.208, overflow cost = 331070.460
+[  64.414] Layer = 9, num_overflows = 0, layer_overflows = 1201109.232, overflow cost = 451181.383
+[  64.414] wire cost:                21790333.716
+[  64.414] via cost:                 5809660.000
+[  64.414] overflow cost:            451181.383
+[  64.414] total cost(ispd24 score): 28051175.099
+[  64.414] 
+[  64.555] generating route guides...
+[  65.152] 
+[  65.152] writing output...
+[  65.202] finished writing output...
+[  65.203] 
+[  65.203] Terminated.
+[  65.203] - - - - - - - - - -
+[  65.203] MEM: cur=943.008MB, peak=1444.379MB
+[  65.203] 
+use evaluator test data: layer 0 name=metal1  min_length=400.00 dir=0
+use evaluator test data: layer 1 name=metal2  min_length=400.00 dir=1
+use evaluator test data: layer 2 name=metal3  min_length=400.00 dir=0
+use evaluator test data: layer 3 name=metal4  min_length=400.00 dir=1
+use evaluator test data: layer 4 name=metal5  min_length=400.00 dir=0
+use evaluator test data: layer 5 name=metal6  min_length=400.00 dir=1
+use evaluator test data: layer 6 name=metal7  min_length=400.00 dir=0
+use evaluator test data: layer 7 name=metal8  min_length=400.00 dir=1
+use evaluator test data: layer 8 name=metal9  min_length=400.00 dir=0
+use evaluator test data: layer 9 name=metal10  min_length=400.00 dir=1
+use evaluator test data: Num nets = 176765
+use evaluator test data: Grid Graph Size (x, y, z)= 1240 x 1682 x 10
+use evaluator test data: Layer = 1, layer_overflows = 47342.407012, overflow cost = 4734.240701
+use evaluator test data: Layer = 2, layer_overflows = 44699.083185, overflow cost = 9204.149020
+use evaluator test data: Layer = 3, layer_overflows = 111323.769566, overflow cost = 20336.525976
+use evaluator test data: Layer = 4, layer_overflows = 252513.322057, overflow cost = 45587.858182
+use evaluator test data: Layer = 5, layer_overflows = 117727.802594, overflow cost = 57360.638441
+use evaluator test data: Layer = 6, layer_overflows = 937239.272205, overflow cost = 151084.565662
+use evaluator test data: Layer = 7, layer_overflows = 694121.694002, overflow cost = 220496.735062
+use evaluator test data: Layer = 8, layer_overflows = 1105727.207566, overflow cost = 331069.455819
+use evaluator test data: Layer = 9, layer_overflows = 1201109.231609, overflow cost = 451180.378980
+use evaluator test data: Number of open nets : 0
+use evaluator test data: Number of incompleted nets : 0
+use evaluator test data: wirelength cost 21790333.7161
+use evaluator test data: via cost 5809660.0000
+use evaluator test data: overflow cost 451180.3790
+use evaluator test data: total cost 28051174.0951
