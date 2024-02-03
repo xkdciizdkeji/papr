@@ -750,7 +750,7 @@ vector<vector<int> > GlobalRouter::getBatches(vector<SingleNetRouter> &routers, 
                   {
             auto& router = routers[jobIdx];
             auto& net = router.grNet;
-            utils::IntervalT<long int> xIntvl, yIntvl;
+            utils::IntervalT<DBU> xIntvl, yIntvl;
             xIntvl.low = DBU(net.getBoundingBox().x.low);
             xIntvl.high = DBU(net.getBoundingBox().x.high);
             yIntvl.low = DBU(net.getBoundingBox().y.low);
@@ -793,7 +793,8 @@ void GlobalRouter::runJobsMT(int numJobs, int numofThreads, const std::function<
             }
         };
 
-        std::thread threads[numThreads];
+        // std::thread threads[numThreads];
+        std::vector<std::thread> threads(numThreads);
         for (int i = 0; i < numThreads; i++)
         {
             threads[i] = std::thread(thread_func, i);
@@ -823,7 +824,8 @@ void GlobalRouter::runJobsMTnew(std::vector<std::vector<int> > batches, const st
             handle(id);
         }
     };
-    std::thread threads[numofThreads];
+    // std::thread threads[numofThreads];
+    std::vector<std::thread> threads(numofThreads);
     for (int i = 0; i < numofThreads; i++)
     {
         threads[i] = std::thread(thread_func, batches[i]);
