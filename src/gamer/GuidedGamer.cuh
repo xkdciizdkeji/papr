@@ -3,18 +3,20 @@
 #define GPU_ROUTER_GUIDED_GAMER_H
 
 #include "gamer_utils.cuh"
+#include <array>
 
 class GuidedGamer
 {
 public:
   GuidedGamer(int DIRECTION, int N, int X, int Y, int LAYER, int maxNumPins);
 
-  void setWireCost(const cuda_shared_ptr<realT[]> &wireCost) { devWireCost = wireCost; }
-  void setViaCost(const cuda_shared_ptr<realT[]> &viaCost) { devViaCost = viaCost; }
+  void setWireCost(const cuda_shared_ptr<realT[]> &cost) { devWireCost = cost; }
+  void setNonStackViaCost(const cuda_shared_ptr<realT[]> &cost) { devNonStackViaCost = cost; }
+  void setUnitViaCost(realT cost) { unitViaCost = cost; }
   const cuda_shared_ptr<int[]> &getRoutes() const { return devRoutes; }
   bool getIsRouted() const;
 
-  void setGuide2D(const std::vector<utils::BoxT<int>> &guide2D);
+  void setGuide(const std::vector<std::array<int, 6>> &guide);
   void reserve(int nWires, int nRows, int nLongWires, int nWorkplace, int nViasegs);
 
   void route(const std::vector<int> &pinIndices, int numTurns);
@@ -60,7 +62,8 @@ private:
 
   // original cost
   cuda_shared_ptr<realT[]> devWireCost;
-  cuda_shared_ptr<realT[]> devViaCost;
+  cuda_shared_ptr<realT[]> devNonStackViaCost;
+  realT unitViaCost;
 };
 
 #endif

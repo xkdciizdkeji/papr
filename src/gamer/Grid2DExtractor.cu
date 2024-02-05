@@ -38,25 +38,14 @@ Grid2DExtractor::Grid2DExtractor(int DIRECTION, int N, int X, int Y, int LAYER)
   devCost2D = cuda_make_shared<realT[]>(2 * X * Y);
 }
 
-void Grid2DExtractor::extractCost2D()
+void Grid2DExtractor::extract()
 {
-  extractCost2D(utils::BoxT<int>(0, 0, X, Y));
+  extract(utils::BoxT<int>(0, 0, X, Y));
 }
 
-void Grid2DExtractor::extractCost2D(const utils::BoxT<int> &box)
+void Grid2DExtractor::extract(const utils::BoxT<int> &box)
 {
   extract2DGrid<<<dim3((box.width() + 31) / 32, (box.height() + 31) / 32), dim3(32, 32)>>>(
       devCost2D.get(), devWireCost.get(), box.lx(), box.ly(), box.width(), box.height(), DIRECTION, N, X, Y, LAYER);
-  checkCudaErrors(cudaDeviceSynchronize());
-}
-
-void Grid2DExtractor::extractPin2DIndices(std::vector<int> &pin2DIndices, const std::vector<int> &pinIndices) const
-{
-  pin2DIndices.clear();
-  std::transform(pinIndices.begin(), pinIndices.end(), std::back_inserter(pin2DIndices), [&](int idx)
-                 { auto [x, y, z] = idxToXYZ(idx, DIRECTION, N); return x + y * X; });
-  std::sort(pin2DIndices.begin(), pin2DIndices.end());
-  auto last = std::unique(pin2DIndices.begin(), pin2DIndices.end());
-  pin2DIndices.erase(last, pin2DIndices.end());
 }
 #endif

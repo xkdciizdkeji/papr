@@ -17,13 +17,8 @@ public:
   void setCost2D(const cuda_shared_ptr<realT[]> &cost2D) { devCost2D = cost2D; }
   const cuda_shared_ptr<realT[]> &getCoarseCost2D() const { return devCoarseCost2D; }
 
-  void scalePin2DIndices(std::vector<int> &coarsePin2DIndices, const std::vector<int> &pin2DIndices) const;
-  utils::BoxT<int> coarsenBoudingBox(const utils::BoxT<int> &box) const;
-  utils::BoxT<int> finingBoundingBox(const utils::BoxT<int> &box) const;
-  void getGuideFromRoutes2D(std::vector<utils::BoxT<int>> &guide2D, const int *routes2D) const;
-
-  void scaleCost2D();
-  void scaleCost2D(const utils::BoxT<int> &coarseBox);
+  void scale();
+  void scale(const utils::BoxT<int> &coarseBox);
 
 private:
   int X, Y;

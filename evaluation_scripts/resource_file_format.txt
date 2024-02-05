@@ -1,0 +1,13 @@
+nLayers xSize ySize
+unit_length_wire_cost unit_via_cost unit_length_short_costs[0] unit_length_short_costs[1] unit_length_short_costs[2] ... ### unit_length_short_costs[i] represents the unit_length_short_cost for the i-th metall layer
+horizontal_GCell_edge_lengths[0] horizontal_GCell_edge_lengths[1] horizontal_GCell_edge_lengths[2] ... ### horizontal_GCell_edge_lengths[i] represents the length of the i-th horizontal GCell edge
+vertical_GCell_edge_lengths[0] vertical_GCell_edge_lengths[1] vertical_GCell_edge_lengths[2] ... ### vertical_GCell_edge_lengths[i] represents the length of the i-th vertical GCell edge
+layerNames[0] layerDirections[0] layerMinLengths[0] ### For direction, 0 represents horizontal, while 1 represents vertical. And layerMinLength represents the minimum length of a wire at this metal layer.
+####
+routing capacity for each GCell edge in layer 0
+####
+layerNames[1] layerDirections[1] layerMinLengths[1]
+####
+routing capacity for each GCell edge in layer 1
+####
+...

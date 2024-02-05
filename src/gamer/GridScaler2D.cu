@@ -83,53 +83,15 @@ GridScaler2D::GridScaler2D(int X, int Y, int scaleX, int scaleY)
   devCoarseCost2D = cuda_make_shared<realT[]>(2 * coarseX * coarseY);
 }
 
-void GridScaler2D::scalePin2DIndices(std::vector<int> &coarsePinIndices, const std::vector<int> &pinIndices) const
+void GridScaler2D::scale()
 {
-  coarsePinIndices.clear();
-  std::transform(pinIndices.begin(), pinIndices.end(), std::back_inserter(coarsePinIndices), [&](int idx)
-                 { return ((idx / X) / scaleY) * coarseX + ((idx % X) / scaleX); });
-  std::sort(coarsePinIndices.begin(), coarsePinIndices.end());
-  auto last = std::unique(coarsePinIndices.begin(), coarsePinIndices.end());
-  coarsePinIndices.erase(last, coarsePinIndices.end());
+  scale(utils::BoxT<int>(0, 0, coarseX, coarseY));
 }
 
-utils::BoxT<int> GridScaler2D::coarsenBoudingBox(const utils::BoxT<int> &box) const
-{
-  return utils::BoxT<int>(
-      box.lx() / scaleX, box.ly() / scaleY,
-      std::min(coarseX, box.hx() / scaleX + 1), std::min(coarseY, box.hy() / scaleY + 1));
-}
-
-utils::BoxT<int> GridScaler2D::finingBoundingBox(const utils::BoxT<int> &box) const
-{
-  return utils::BoxT<int>(
-      box.lx() * scaleX, box.ly() * scaleY,
-      std::min(X, box.hx() * scaleX), std::min(Y, box.hy() * scaleY));
-}
-
-void GridScaler2D::getGuideFromRoutes2D(std::vector<utils::BoxT<int>> &guide2D, const int *routes2D) const
-{
-  guide2D.clear();
-  for (int i = 0; i < routes2D[0]; i += 2)
-  {
-    int startX = routes2D[1 + i] % coarseX, startY = routes2D[1 + i] / coarseX;
-    int endX = routes2D[2 + i] % coarseX, endY = routes2D[2 + i] / coarseX;
-    guide2D.emplace_back(startX * scaleX, startY * scaleY,
-                         std::min(X, (endX + 1) * scaleX), std::min(Y, (endY + 1) * scaleY));
-  }
-  // TODO: merge boxes if possible
-}
-
-void GridScaler2D::scaleCost2D()
-{
-  scaleCost2D(utils::BoxT<int>(0, 0, coarseX, coarseY));
-}
-
-void GridScaler2D::scaleCost2D(const utils::BoxT<int> &coarseBox)
+void GridScaler2D::scale(const utils::BoxT<int> &coarseBox)
 {
   coarsenCost2D<<<dim3((coarseBox.width() + 31) / 32, (coarseBox.height() + 31) / 32), dim3(32, 32)>>>(
       devCoarseCost2D.get(), devCost2D.get(), coarseBox.lx(), coarseBox.ly(),
       coarseBox.width(), coarseBox.height(), coarseX, coarseY, scaleX, scaleY, X, Y);
-  checkCudaErrors(cudaDeviceSynchronize());
 }
 #endif

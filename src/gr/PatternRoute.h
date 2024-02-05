@@ -2,7 +2,6 @@
 #include <flute.h>
 #include "GRNet.h"
 #include "GridGraph.h"
-
 #include "../utils/utils.h"
 
 extern "C" {

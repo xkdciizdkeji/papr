@@ -1,7 +1,7 @@
 .vscode
-build
+build/
 toys/*
 !toys/.gitkeep
 run*
 benchmark
-
+evaluation_scripts/

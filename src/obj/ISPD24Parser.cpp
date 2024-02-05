@@ -22,9 +22,10 @@ ISPD24Parser::ISPD24Parser(const Parameters &params)
     std::getline(cap_stream, line);
     std::istringstream unit_costs_line(line);
     unit_costs_line >> unit_length_wire_cost >> unit_via_cost;
-    unit_length_short_costs.reserve(n_layers);
+    unit_overflow_costs.reserve(n_layers);
     for(CostT cost; unit_costs_line >> cost;)
-        unit_length_short_costs.push_back(cost);
+        // unit_overflow_costs.push_back(50.f * cost);
+        unit_overflow_costs.push_back(cost);
     // Get edge lengths
     std::getline(cap_stream, line);
     std::istringstream h_edge_line(line);

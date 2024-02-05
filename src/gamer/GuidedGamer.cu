@@ -37,7 +37,7 @@ __global__ static void packWireToRows(int *idxAtRow, realT *costAtRow, int *idxP
 }
 
 __global__ static void packViaToSegs(realT *costAtViaseg, int *posAtViaseg, int *locAtRow, const int3 *packPlan,
-                                     const realT *viaCost, const int *idxPosMap, int numViasegs, int DIRECTION, int N)
+                                     const realT *nonStackViaCost, const int *idxPosMap, int numViasegs, int DIRECTION, int N)
 {
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= numViasegs)
@@ -51,7 +51,7 @@ __global__ static void packViaToSegs(realT *costAtViaseg, int *posAtViaseg, int 
     int pos = idxPosMap[idx];
     locAtRow[pos] = offset + i;
     posAtViaseg[offset + i] = pos;
-    costAtViaseg[offset + i] = (i == 0 ? INFINITY_DISTANCE : viaCost[idx]);
+    costAtViaseg[offset + i] = nonStackViaCost[idx];
   }
 }
 
@@ -184,32 +184,52 @@ __global__ static void sweepWireGlobal(realT *distAtRow, int *prevAtRow, char *w
   }
 }
 
-__global__ static void sweepVia(realT *distAtRow, int *prevAtRow, const realT *costAtViaseg, const int *posAtViaseg, int numViasegs)
+__global__ static void sweepVia(realT *distAtRow, int *prevAtRow, const realT *costAtViaseg, const int *posAtViaseg, realT unitViaCost, int numViasegs)
 {
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= numViasegs)
     return;
   costAtViaseg += tid * VIA_SEG_SIZE;
   posAtViaseg += tid * VIA_SEG_SIZE;
+
   int p[VIA_SEG_SIZE];
-  realT d[VIA_SEG_SIZE], v[VIA_SEG_SIZE];
+  realT d[VIA_SEG_SIZE];
+  realT o[VIA_SEG_SIZE];
+  realT v = unitViaCost;
+  int n = VIA_SEG_SIZE;
   for (int z = 0; z < VIA_SEG_SIZE; z++)
   {
     p[z] = z;
     d[z] = posAtViaseg[z] >= 0 ? distAtRow[posAtViaseg[z]] : INFINITY_DISTANCE;
-    v[z] = costAtViaseg[z];
+    o[z] = costAtViaseg[z];
   }
-  for (int z = 1; z < VIA_SEG_SIZE; z++)
+  for (int i = 1, s = d[0], t, g = d[n - 1], h; i < n; i++)
   {
-    if (d[z] > d[z - 1] + v[z])
+    // ascend
+    t = s;
+    s = d[i];
+    if (d[i] > t + v)
     {
-      d[z] = d[z - 1] + v[z];
-      p[z] = p[z - 1];
+      d[i] = t + v;
+      p[i] = i - 1;
     }
-    if (d[VIA_SEG_SIZE - 1 - z] > d[VIA_SEG_SIZE - z] + v[VIA_SEG_SIZE - z])
+    if (d[i] > d[i - 1] + v + o[i - 1])
     {
-      d[VIA_SEG_SIZE - 1 - z] = d[VIA_SEG_SIZE - z] + v[VIA_SEG_SIZE - z];
-      p[VIA_SEG_SIZE - 1 - z] = p[VIA_SEG_SIZE - z];
+      d[i] = d[i - 1] + v + o[i - 1];
+      p[i] = p[i - 1];
+    }
+    // descend
+    h = g;
+    g = d[n - i - 1];
+    if (d[n - i - 1] > h + v)
+    {
+      d[n - i - 1] = h + v;
+      p[n - i - 1] = n - i;
+    }
+    if (d[n - i - 1] > d[n - i] + v + o[n - i])
+    {
+      d[n - i - 1] = d[n - i] + v + o[n - i];
+      p[n - i - 1] = p[n - i];
     }
   }
   for (int z = 0; z < VIA_SEG_SIZE; z++)
@@ -329,27 +349,27 @@ bool GuidedGamer::getIsRouted() const
                      { return x & y; });
 }
 
-void GuidedGamer::setGuide2D(const std::vector<utils::BoxT<int>> &boxes)
+void GuidedGamer::setGuide(const std::vector<std::array<int, 6>> &guide)
 {
   std::vector<std::pair<int3, int3>> wires;
   std::vector<std::pair<int3, int3>> viasegs;
   // collect wire segments and via segments
-  for (const auto &box : boxes)
+  for(const auto &[lx, ly, lz, hx, hy, hz] : guide)
   {
     // collect wires
-    for (int z = 0; z < LAYER; z++)
+    for (int z = lz; z <= hz; z++)
     {
       if ((z & 1) ^ DIRECTION) // YX
-        for (int y = box.ly(); y < box.hy(); y++)
-          wires.emplace_back(make_int3(box.lx(), y, z), make_int3(box.hx() - 1, y, z));
+        for (int y = ly; y <= hy; y++)
+          wires.emplace_back(make_int3(lx, y, z), make_int3(hx, y, z));
       else // XY
-        for (int x = box.lx(); x < box.hx(); x++)
-          wires.emplace_back(make_int3(x, box.ly(), z), make_int3(x, box.hy() - 1, z));
+        for (int x = lx; x <= hx; x++)
+          wires.emplace_back(make_int3(x, ly, z), make_int3(x, hy, z));
     }
     // collect viasegs
-    for (int x = box.lx(); x < box.hx(); x++)
-      for (int y = box.ly(); y < box.hy(); y++)
-        viasegs.emplace_back(make_int3(x, y, 0), make_int3(x, y, LAYER - 1));
+    for (int x = lx; x <= hx; x++)
+      for (int y = ly; y <= hy; y++)
+        viasegs.emplace_back(make_int3(x, y, lz), make_int3(x, y, hz));
   }
   // sort wire segments and via segments
   auto compareWire = [&](const std::pair<int3, int3> &left, const std::pair<int3, int3> &right)
@@ -523,8 +543,7 @@ void GuidedGamer::setGuide2D(const std::vector<utils::BoxT<int>> &boxes)
       devWirePackPlan.get(), devWireCost.get(), numWires, DIRECTION, N);
   packViaToSegs<<<(numViasegs + 1023) / 1024, 1024>>>(
       devCostAtViaseg.get(), devPosAtViaseg.get(), devLocAtRow.get(),
-      devViasegPackPlan.get(), devViaCost.get(), devIdxPosMap.get(), numViasegs, DIRECTION, N);
-  checkCudaErrors(cudaDeviceSynchronize());
+      devViasegPackPlan.get(), devNonStackViaCost.get(), devIdxPosMap.get(), numViasegs, DIRECTION, N);
 }
 
 void GuidedGamer::reserve(int nWires, int nRows, int nLongWires, int nWorkplace, int nViasegs)
@@ -590,7 +609,7 @@ void GuidedGamer::route(const std::vector<int> &pinIndices, int numTurns)
       {
         sweepVia<<<(numViasegs + 1023) / 1024, 1024>>>(
             devDistAtRow.get(), devAllPrevAtRow.get() + turn * numRows * PACK_ROW_SIZE,
-            devCostAtViaseg.get(), devPosAtViaseg.get(), numViasegs);
+            devCostAtViaseg.get(), devPosAtViaseg.get(), unitViaCost, numViasegs);
       }
     }
     tracePath<<<1, 1>>>(
@@ -598,6 +617,5 @@ void GuidedGamer::route(const std::vector<int> &pinIndices, int numTurns)
         devIdxAtRow.get(), devLocAtRow.get(), devPosAtViaseg.get(), devPinPositions.get(), numPins, numRows, numTurns);
     cleanDist<<<(numRows * PACK_ROW_SIZE + 1023) / 1024, 1024>>>(devDistAtRow.get(), devMarkAtRow.get(), numRows);
   }
-  checkCudaErrors(cudaDeviceSynchronize());
 }
 #endif
