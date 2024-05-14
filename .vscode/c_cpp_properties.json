@@ -1,0 +1,25 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/data1/students/fengjx/libtorch",
+                "/data1/students/fengjx/libtorch/include/torch/csrc/api/include",
+                "/data1/students/fengjx/libtorch/include",
+                "/data1/students/fengjx/libtorch/include/c10",
+                "/data1/students/fengjx/libtorch/include/pybind11",
+                
+                
+            
+                
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "c17",
+            "cppStandard": "gnu++17",
+            "intelliSenseMode": "linux-clang-x64"
+        }
+    ],
+    "version": 4
+}
