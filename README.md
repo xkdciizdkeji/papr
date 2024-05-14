@@ -77,7 +77,7 @@ Users are entirely responsible, to the exclusion of the author, for compliance w
 
 
 
-
+## 3. 我的更改所需操作
 配置libtorch所需操作：
 先去官网下载libtorch包，然后把libtorch包解压
 CMakeLists里面，搜torch几个字母，凡是涉及到文件路径的都得改
