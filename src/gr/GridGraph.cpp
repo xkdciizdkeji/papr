@@ -199,7 +199,7 @@ utils::BoxT<int> GridGraph::rangeSearchCells(const utils::BoxT<DBU>& box) const 
     return {rangeSearchRows(0, box[0]), rangeSearchRows(1, box[1])};
 }
 
-DBU GridGraph::getEdgeLength(unsigned direction, unsigned edgeIndex) const {
+DBU GridGraph::getEdgeLength(unsigned direction, unsigned edgeIndex) const {//返回的是当前gcell中心到布线方向下一个gcell中心的长度
     return gridCenters[direction][edgeIndex + 1] - gridCenters[direction][edgeIndex];
 }
 
@@ -219,6 +219,32 @@ CostT GridGraph::getWireCost(const int layerIndex, const utils::PointT<int> lowe
     return cost;
 }
 
+// //为了计算2d情况下的demand
+// CostT GridGraph::getdemand_for_mask(const int layerIndex_for2d, const utils::PointT<int> lower, const CapacityT demand) const {
+//     unsigned direction = layerIndex_for2d;
+//     DBU edgeLength = getEdgeLength(direction, lower[direction]);
+//     DBU demandLength = demand * edgeLength;
+//     //const auto& edge = graphEdges[layerIndex][lower.x][lower.y];
+//     CostT cost = demandLength * unit_length_wire_cost;
+//     // cost += demandLength * unit_length_short_costs[layerIndex] * (
+//     //     edge.capacity < 1.0 ? 1.0 : logistic(edge.capacity - edge.demand, parameters.cost_logistic_slope)
+//     // );
+//     return cost;
+// }
+
+//为了计算2d情况下的demand
+CostT GridGraph::getWiredemand_for_mask(const int layerIndex_for2d, const utils::PointT<int> lower, const CapacityT demand) const {
+    unsigned direction = layerIndex_for2d;
+    DBU edgeLength = getEdgeLength(direction, lower[direction]);
+    DBU demandLength = demand * edgeLength;
+    //const auto& edge = graphEdges[layerIndex][lower.x][lower.y];
+    CostT cost = demandLength * unit_length_wire_cost;
+    // cost += demandLength * unit_length_short_costs[layerIndex] * (
+    //     edge.capacity < 1.0 ? 1.0 : logistic(edge.capacity - edge.demand, parameters.cost_logistic_slope)
+    // );
+    return cost;
+}
+
 CostT GridGraph::getWireCost(const int layerIndex, const utils::PointT<int> u, const utils::PointT<int> v) const {
     unsigned direction = layerDirections[layerIndex];
     assert(u[1 - direction] == v[1 - direction]);
@@ -233,22 +259,57 @@ CostT GridGraph::getWireCost(const int layerIndex, const utils::PointT<int> u, c
     return cost;
 }
 
+// 获取通过成本
 CostT GridGraph::getViaCost(const int layerIndex, const utils::PointT<int> loc) const {
+    // 断言：layerIndex + 1 < nLayers，即当前层数小于总层数
     assert(layerIndex + 1 < nLayers);
+    // 初始化成本为单位via成本
     CostT cost = unit_via_cost;
-    // Estimated wire cost to satisfy min-area
+    // 计算从当前层到下一层的边长
     for (int l = layerIndex; l <= layerIndex + 1; l++) {
-        unsigned direction = layerDirections[l];
+        // 获取当前层的direction
+        unsigned direction = layerDirections[l];//获取的是一个0/1
+        // 获取当前位置向下移动1个单位的位置
         utils::PointT<int> lowerLoc = loc;
         lowerLoc[direction] -= 1;
+        // 获取当前位置向下移动1个单位的长度
         DBU lowerEdgeLength = loc[direction] > 0 ? getEdgeLength(direction, lowerLoc[direction]) : 0;
+        // 获取当前位置向上移动1个单位的长度
         DBU higherEdgeLength = loc[direction] < getSize(direction) - 1 ? getEdgeLength(direction, loc[direction]) : 0;
+        // 计算当前层的总需求量
         CapacityT demand = (CapacityT) layerMinLengths[l] / (lowerEdgeLength + higherEdgeLength) * parameters.via_multiplier;
         if (lowerEdgeLength > 0) cost += getWireCost(l, lowerLoc, demand);
         if (higherEdgeLength > 0) cost += getWireCost(l, loc, demand);
     }
     return cost;
 }
+
+float GridGraph::getViademand_for_mask(const int layerIndex, const utils::PointT<int> loc) const {
+    // 断言：layerIndex + 1 < nLayers，即当前层数小于总层数
+    assert(layerIndex + 1 < nLayers);
+    // 初始化成本为单位via成本
+    CostT cost = unit_via_cost;
+    float demand ;
+    // 计算从当前层到下一层的边长
+    for (int l = layerIndex; l <= layerIndex + 1; l++) {
+        // 获取当前层的direction
+        unsigned direction = layerDirections[l];//获取的是一个0/1
+        // 获取当前位置向下移动1个单位的位置
+        utils::PointT<int> lowerLoc = loc;
+        lowerLoc[direction] -= 1;
+        // 获取当前位置向下移动1个单位的长度
+        DBU lowerEdgeLength = loc[direction] > 0 ? getEdgeLength(direction, lowerLoc[direction]) : 0;
+        // 获取当前位置向上移动1个单位的长度
+        DBU higherEdgeLength = loc[direction] < getSize(direction) - 1 ? getEdgeLength(direction, loc[direction]) : 0;
+        // 计算当前层的总需求量
+        demand = (float) layerMinLengths[l] / (lowerEdgeLength + higherEdgeLength) * parameters.via_multiplier;
+        // if (lowerEdgeLength > 0) cost += getWireCost(l, lowerLoc, demand);
+        // if (higherEdgeLength > 0) cost += getWireCost(l, loc, demand);
+    }
+    return demand;
+}
+
+
 
 void GridGraph::selectAccessPoints(GRNet& net, robin_hood::unordered_map<uint64_t, std::pair<utils::PointT<int>, utils::IntervalT<int>>>& selectedAccessPoints) const {
     selectedAccessPoints.clear();
@@ -262,7 +323,7 @@ void GridGraph::selectAccessPoints(GRNet& net, robin_hood::unordered_map<uint64_
         for (int index = 0; index < accessPoints.size(); index++) {
             const auto& point = accessPoints[index];
             int accessibility = 0;
-            if (point.layerIdx >= parameters.min_routing_layer) {
+            if (point.layerIdx >= parameters.min_routing_layer) {//如果这个point的layer>=1
                 unsigned direction = getLayerDirection(point.layerIdx);
                 accessibility += getEdge(point.layerIdx, point.x, point.y).capacity >= 1;
                 if (point[direction] > 0) {
@@ -271,7 +332,7 @@ void GridGraph::selectAccessPoints(GRNet& net, robin_hood::unordered_map<uint64_
                     accessibility += getEdge(lower.layerIdx, lower.x, lower.y).capacity >= 1;
                 }
             } else {
-                accessibility = 1;
+                accessibility = 1;//如果这个point的layer=0
             }
             int distance = abs(netCenter.x - point.x) + abs(netCenter.y - point.y);
             if (accessibility > bestAccessDist.first || (accessibility == bestAccessDist.first && distance < bestAccessDist.second)) {
@@ -320,9 +381,10 @@ void GridGraph::commitWire(const int layerIndex, const utils::PointT<int> lower,
 void GridGraph::commitVia(const int layerIndex, const utils::PointT<int> loc, const bool reverse) {
     assert(layerIndex + 1 < nLayers);
     for (int l = layerIndex; l <= layerIndex + 1; l++) {
-        unsigned direction = layerDirections[l];
+        unsigned direction = layerDirections[l];//如果横向，direction=0；如果纵向，direction=1
         utils::PointT<int> lowerLoc = loc;
-        lowerLoc[direction] -= 1;
+        lowerLoc[direction] -= 1;//lowerLoc[direction] = lowerLoc[direction] - 1;
+        //lowerLoc[direction]指的是布线方向的前一个点。例如：lowerLoc[0]，0说明是横向布线，lowerLoc[0]指代横坐标，横坐标减一就是布线方向的前一个点  
         DBU lowerEdgeLength = loc[direction] > 0 ? getEdgeLength(direction, lowerLoc[direction]) : 0;
         DBU higherEdgeLength = loc[direction] < getSize(direction) - 1 ? getEdgeLength(direction, loc[direction]) : 0;
         CapacityT demand = (CapacityT) layerMinLengths[l] / (lowerEdgeLength + higherEdgeLength) * parameters.via_multiplier;
@@ -336,12 +398,12 @@ void GridGraph::commitVia(const int layerIndex, const utils::PointT<int> loc, co
 void GridGraph::commitTree(const std::shared_ptr<GRTreeNode>& tree, const bool reverse) {
     GRTreeNode::preorder(tree, [&](std::shared_ptr<GRTreeNode> node) {
         for (const auto& child : node->children) {
-            if (node->layerIdx == child->layerIdx) {
+            if (node->layerIdx == child->layerIdx) {//GRTree的相邻点只有一个坐标不同，因此如果两个layerindex相同，那么其x或者y一定不同，也就是说这两个点是处于一条直线上的点
                 unsigned direction = layerDirections[node->layerIdx];
                 if (direction == MetalLayer::H) {
                     assert(node->y == child->y);
                     int l = min(node->x, child->x), h = max(node->x, child->x);
-                    for (int x = l; x < h; x++) {
+                    for (int x = l; x < h; x++) {//注意这里，较小的一端是闭集，较大的一端是开集
                         commitWire(node->layerIdx, {x, node->y}, reverse);
                     }
                 } else {
@@ -353,7 +415,7 @@ void GridGraph::commitTree(const std::shared_ptr<GRTreeNode>& tree, const bool r
                 }
             } else {
                 int maxLayerIndex = max(node->layerIdx, child->layerIdx);
-                for (int layerIdx = min(node->layerIdx, child->layerIdx); layerIdx < maxLayerIndex; layerIdx++) {
+                for (int layerIdx = min(node->layerIdx, child->layerIdx); layerIdx < maxLayerIndex; layerIdx++) {//同理也要注意这里，较小的一端是闭集，较大的一端是开集
                     commitVia(layerIdx, {node->x, node->y}, reverse);
                 }
             }

@@ -1,4 +1,6 @@
 #include "PatternRoute.h"
+#include <random>  // 包含 <random> 头文件
+#include "GRTree.h"
 using std::vector;
 
 void SteinerTreeNode::preorder(
@@ -16,6 +18,7 @@ void PatternRoutingNode::preorder(
     visit(node);
     for (auto& child : node->children) preorder(child, visit);
 }
+
 
 
 
@@ -43,6 +46,7 @@ std::vector<TorchEdge> SteinerTreeNode::getTorchEdges(std::shared_ptr<SteinerTre
             TorchPin pin1,pin2;
             pin1.set(node->x, node->y, 0);
             pin2.set(child->x, child->y, 0);
+            //if (node->x==child->x && node->y==child->y) std::cout<<"yes ";
             TorchEdge edge;
             edge.set(pin1, pin2);
             edges.emplace_back(edge);
@@ -227,7 +231,266 @@ void PatternRoute::constructSteinerTree() {
         constructTree(steinerTree, -1, root);
     }
 }
+void PatternRoute::constructSteinerTree_Random() {
+    // 1. Select access points
+    robin_hood::unordered_map<uint64_t, std::pair<utils::PointT<int>, utils::IntervalT<int>>> selectedAccessPoints;
+    gridGraph.selectAccessPoints(net, selectedAccessPoints);
+    
+    // 2. Construct Steiner tree
+    const int degree = selectedAccessPoints.size();
+    if (degree == 1) {
+        for (auto& accessPoint : selectedAccessPoints) {
+            steinerTree = std::make_shared<SteinerTreeNode>(accessPoint.second.first, accessPoint.second.second);
+        }
+    } else {
+        int xs[degree * 4];
+        int ys[degree * 4];
+        int i = 0;
+        for (auto& accessPoint : selectedAccessPoints) {
+            xs[i] = accessPoint.second.first.x;
+            ys[i] = accessPoint.second.first.y;
+            i++;
+        }
+        Tree flutetree = flute(degree, xs, ys, ACCURACY);
+        const int numBranches = degree + degree - 2;
+        vector<utils::PointT<int>> steinerPoints;
+        steinerPoints.reserve(numBranches);
+        vector<vector<int>> adjacentList(numBranches);
+        for (int branchIndex = 0; branchIndex < numBranches; branchIndex++) {
+            const Branch& branch = flutetree.branch[branchIndex];
+            steinerPoints.emplace_back(branch.x, branch.y);
+            if (branchIndex == branch.n) continue;
+            adjacentList[branchIndex].push_back(branch.n);
+            adjacentList[branch.n].push_back(branchIndex);
+        }
+        std::function<void(std::shared_ptr<SteinerTreeNode>&, int, int)> constructTree = [&] (
+            std::shared_ptr<SteinerTreeNode>& parent, int prevIndex, int curIndex
+        ) {
+            std::shared_ptr<SteinerTreeNode> current = std::make_shared<SteinerTreeNode>(steinerPoints[curIndex]);
+            if (parent != nullptr && parent->x == current->x && parent->y == current->y) {
+                for (int nextIndex : adjacentList[curIndex]) {
+                    if (nextIndex == prevIndex) continue;
+                    constructTree(parent, curIndex, nextIndex);
+                }
+                return;
+            }
+            // Build subtree
+            for (int nextIndex : adjacentList[curIndex]) {
+                if (nextIndex == prevIndex) continue;
+                constructTree(current, curIndex, nextIndex);
+            }
+            // Set fixed layer interval
+            uint64_t hash = gridGraph.hashCell(current->x, current->y);
+            if (selectedAccessPoints.find(hash) != selectedAccessPoints.end()) {
+                current->fixedLayers = selectedAccessPoints[hash].second;
+            }
+            // Connect current to parent
+            if (parent == nullptr) {
+                parent = current;
+            } else {
+                parent->children.emplace_back(current);
+            }
+        };
+        // Pick a root having degree 1
+        // 这回我随机选一个root的degree为1的点
+        int root = 0;
+        std::function<bool(int)> hasDegree1 = [&] (int index) {
+            if (adjacentList[index].size() == 1) {
+                int nextIndex = adjacentList[index][0];
+                if (steinerPoints[index] == steinerPoints[nextIndex]) {
+                    return hasDegree1(nextIndex);
+                } else {
+                    return true;
+                }
+            } else {
+                return false;
+            }
+        };
+        vector<int> pinindextemp(steinerPoints.size());
+        for (int i = 0; i < steinerPoints.size(); i++) pinindextemp[i]=i;
+        // 获取随机数生成器
+        std::random_device rd;
+        std::mt19937 g(rd());
 
+        // 打乱向量顺序
+        std::shuffle(pinindextemp.begin(), pinindextemp.end(), g);
+        for (int pinindex:pinindextemp) {
+            if (hasDegree1(pinindex)) {
+                root = pinindex;
+                break;
+            }
+        }
+        constructTree(steinerTree, -1, root);
+    }
+}
+void PatternRoute::constructSteinerTree_Random_multi(int treeNum) {
+    steinerTree_multi.reserve(treeNum);
+    // 1. Select access points
+    robin_hood::unordered_map<uint64_t, std::pair<utils::PointT<int>, utils::IntervalT<int>>> selectedAccessPoints;
+    gridGraph.selectAccessPoints(net, selectedAccessPoints);
+    
+    // 2. Construct Steiner tree
+    const int degree = selectedAccessPoints.size();
+    if (degree == 1) {
+        for (auto& accessPoint : selectedAccessPoints) {
+            for(int treecount=0;treecount<treeNum;treecount++) steinerTree_multi[treecount] = std::make_shared<SteinerTreeNode>(accessPoint.second.first, accessPoint.second.second);
+        }
+    } else {
+        int xs[degree * 4];
+        int ys[degree * 4];
+        int i = 0;
+        for (auto& accessPoint : selectedAccessPoints) {
+            xs[i] = accessPoint.second.first.x;
+            ys[i] = accessPoint.second.first.y;
+            i++;
+        }
+        Tree flutetree = flute(degree, xs, ys, ACCURACY);
+        const int numBranches = degree + degree - 2;
+        vector<utils::PointT<int>> steinerPoints;
+        steinerPoints.reserve(numBranches);
+        vector<vector<int>> adjacentList(numBranches);
+        for (int branchIndex = 0; branchIndex < numBranches; branchIndex++) {
+            const Branch& branch = flutetree.branch[branchIndex];
+            steinerPoints.emplace_back(branch.x, branch.y);
+            if (branchIndex == branch.n) continue;
+            adjacentList[branchIndex].push_back(branch.n);
+            adjacentList[branch.n].push_back(branchIndex);
+        }
+        std::function<void(std::shared_ptr<SteinerTreeNode>&, int, int)> constructTree = [&] (
+            std::shared_ptr<SteinerTreeNode>& parent, int prevIndex, int curIndex
+        ) {
+            std::shared_ptr<SteinerTreeNode> current = std::make_shared<SteinerTreeNode>(steinerPoints[curIndex]);
+            if (parent != nullptr && parent->x == current->x && parent->y == current->y) {
+                for (int nextIndex : adjacentList[curIndex]) {
+                    if (nextIndex == prevIndex) continue;
+                    constructTree(parent, curIndex, nextIndex);
+                }
+                return;
+            }
+            // Build subtree
+            for (int nextIndex : adjacentList[curIndex]) {
+                if (nextIndex == prevIndex) continue;
+                constructTree(current, curIndex, nextIndex);
+            }
+            // Set fixed layer interval
+            uint64_t hash = gridGraph.hashCell(current->x, current->y);
+            if (selectedAccessPoints.find(hash) != selectedAccessPoints.end()) {
+                current->fixedLayers = selectedAccessPoints[hash].second;
+            }
+            // Connect current to parent
+            if (parent == nullptr) {
+                parent = current;
+            } else {
+                parent->children.emplace_back(current);
+            }
+        };
+        // Pick a root having degree 1
+        // 这回我随机选一个root的degree为1的点
+        int root = 0;
+        vector<int> root_multi(steinerPoints.size());
+        std::function<bool(int)> hasDegree1 = [&] (int index) {
+            if (adjacentList[index].size() == 1) {
+                int nextIndex = adjacentList[index][0];
+                if (steinerPoints[index] == steinerPoints[nextIndex]) {
+                    return hasDegree1(nextIndex);
+                } else {
+                    return true;
+                }
+            } else {
+                return false;
+            }
+        };
+        for (int i = 0; i < steinerPoints.size(); i++) {
+            if (hasDegree1(i)) {
+                root_multi[i]=i;//.push_back(i);
+                break;
+            }
+        }
+        //constructTree(steinerTree_multi[0], -1, root_multi[0]);
+
+        vector<int> pinindextemp(steinerPoints.size());
+        for (int i = 0; i < steinerPoints.size(); i++) pinindextemp[i]=i;
+        // 获取随机数生成器
+        std::random_device rd;
+        std::mt19937 g(rd());
+
+        // 打乱向量顺序
+        std::shuffle(pinindextemp.begin(), pinindextemp.end(), g);
+
+        for (int pinindex:pinindextemp) {
+            if (hasDegree1(pinindex)) {
+                root_multi.push_back(pinindex);
+                if (root_multi.size()==treeNum) break;
+            }
+        }
+        int root_multi_size_temp=root_multi.size();
+        for(int i=0;root_multi.size()<treeNum;++i){
+            root_multi.push_back(root_multi[i % root_multi_size_temp]);
+        }
+        for (int treecount=0;treecount<treeNum;++treecount) constructTree(steinerTree_multi[treecount], -1, root_multi[treecount]);
+    }
+}
+void PatternRoute::constructSteinerTree_based_on_routingTree(std::shared_ptr<GRTreeNode> routingTree) {
+    //getsT() = nullptr;
+    std::function<void(std::shared_ptr<SteinerTreeNode>&, std::shared_ptr<GRTreeNode>&)> construct_SteinerTree = [&] (
+        std::shared_ptr<SteinerTreeNode>& dstNode, std::shared_ptr<GRTreeNode>& gr
+    ) {
+        std::shared_ptr<SteinerTreeNode> current = std::make_shared<SteinerTreeNode>(
+            //*gr, gr->layerIdx,numDagNodes++
+            *gr, gr->layerIdx
+        );
+        for (auto grChild : gr->children) {
+            construct_SteinerTree(current, grChild);
+        }
+        if (dstNode == nullptr) {
+            dstNode = current;
+        } else {
+            dstNode->children.emplace_back(current);
+            //constructPaths(dstNode, current);
+        }
+    };
+    construct_SteinerTree(steinerTree, routingTree);
+
+    steinerTree->preorder(steinerTree, [&](std::shared_ptr<SteinerTreeNode> visit) {
+        //log() << *visit << (visit->children.size() > 0 ? " -> " : "");
+        // for (auto& child : visit->children) {
+        //     if(child->x==visit->x&&child->y==visit->y) {
+        //     // if(*child==*visit) {
+        //         for (auto& grandchild:child->children) visit->children.emplace_back(grandchild);
+        //         child=nullptr;
+        //         visit->children.erase(std::remove(visit->children.begin(), visit->children.end(), child), visit->children.end());
+        //     }
+        // }
+        std::vector<int> remove_childindex;
+        for (int childindex=0;childindex<visit->children.size();childindex++) {
+            if(visit->children[childindex]->x==visit->x&&visit->children[childindex]->y==visit->y) {
+            // if(*child==*visit) {
+                for (auto& grandchild:visit->children[childindex]->children) visit->children.emplace_back(grandchild);
+                remove_childindex.emplace_back(childindex);
+                // visit->children.erase(visit->children.begin()+childindex);
+                //visit->children.erase(std::remove(visit->children.begin(), visit->children.end(), child), visit->children.end());
+            }
+        }
+        for (int remove_childindex_i=remove_childindex.size()-1;remove_childindex_i>=0;--remove_childindex_i) {
+            visit->children.erase(visit->children.begin()+remove_childindex[remove_childindex_i]);
+        }
+        //std::cout << *child << (child == visit->children.back() ? "" : ", ");
+        //std::cout << std::endl;
+    });
+}
+
+
+
+void PatternRoute::constructSteinerTree_based_on_routingTree63(std::shared_ptr<GRTreeNode> node) {
+    node->preorder(node, [](std::shared_ptr<GRTreeNode> visit) {
+        log() << *visit << (visit->children.size() > 0 ? " -> " : "");
+        std::shared_ptr<SteinerTreeNode> vi=std::make_shared<SteinerTreeNode>(*visit, visit->layerIdx);
+        for (auto& child : visit->children) std::cout << *child << (child == visit->children.back() ? "" : ", ");
+        
+        
+        std::cout << std::endl;
+    });
+}
 void PatternRoute::constructRoutingDAG() {
     std::function<void(std::shared_ptr<PatternRoutingNode>&, std::shared_ptr<SteinerTreeNode>&)> constructDag = [&] (
         std::shared_ptr<PatternRoutingNode>& dstNode, std::shared_ptr<SteinerTreeNode>& steiner
@@ -248,7 +511,36 @@ void PatternRoute::constructRoutingDAG() {
     constructDag(routingDag, steinerTree);
 }
 
+// void PatternRoute::constructRoutingDAG_based_on_routingTree(std::shared_ptr<GRTreeNode> routingTree) {
+//     numDagNodes=0;
+//     std::function<void(std::shared_ptr<PatternRoutingNode>&, std::shared_ptr<GRTreeNode>&, std::shared_ptr<SteinerTreeNode>&)> constructDag = [&] (
+//         std::shared_ptr<PatternRoutingNode>& dstNode, std::shared_ptr<GRTreeNode>& gr,std::shared_ptr<SteinerTreeNode> steiner
+//     ) {
+//         std::shared_ptr<PatternRoutingNode> current = std::make_shared<PatternRoutingNode>(
+//             *gr, gr->layerIdx,numDagNodes++
+//         );
+//         std::shared_ptr<SteinerTreeNode> current_steiner = std::make_shared<SteinerTreeNode>(
+//             *gr, gr->layerIdx
+//         );
+        
+        
+//         for (auto grChild : gr->children) {
+//             constructDag(current, grChild, current_steiner);
+//         }
+//         if (dstNode == nullptr) {
+//             dstNode = current;
+//         } else {
+//             dstNode->children.emplace_back(current);
+//             constructPaths(dstNode, current);
+//         }
+//     };
+//     constructDag(routingDag, routingTree,steinerTree);
+//     //net.clearRoutingTree();
+// }
+
+
 void PatternRoute::constructRoutingDAG_based_on_routingTree(std::shared_ptr<GRTreeNode> routingTree) {
+    numDagNodes=0;
     std::function<void(std::shared_ptr<PatternRoutingNode>&, std::shared_ptr<GRTreeNode>&)> constructDag = [&] (
         std::shared_ptr<PatternRoutingNode>& dstNode, std::shared_ptr<GRTreeNode>& gr
     ) {
@@ -266,6 +558,7 @@ void PatternRoute::constructRoutingDAG_based_on_routingTree(std::shared_ptr<GRTr
         }
     };
     constructDag(routingDag, routingTree);
+    //net.clearRoutingTree();
 }
 // void PatternRoute::constructRoutingDAG_based_on_routingTree(std::shared_ptr<GRTreeNode> routingTree) {
 //     //numDagNodes=0;
@@ -338,6 +631,7 @@ void PatternRoute::constructRoutingDAGfixed55(vector<int>& ChoosedPatternIndexAr
     //outf.open("a.txt", std::ios::app);
     //outf.open("a.txt");
     int TwoPinNetInedex=0;
+    
     std::function<void(std::shared_ptr<PatternRoutingNode>&, std::shared_ptr<SteinerTreeNode>&)> constructDag = [&] (
         std::shared_ptr<PatternRoutingNode>& dstNode, std::shared_ptr<SteinerTreeNode>& steiner//定义一个函数对象，该对象接受两个参数：一个指向PatternRoutingNode的shared_ptr和一个指向SteinerTreeNode的shared_ptr
     ) {
@@ -357,8 +651,10 @@ void PatternRoute::constructRoutingDAGfixed55(vector<int>& ChoosedPatternIndexAr
             // 否则将当前节点添加到dstNode的子节点中
             dstNode->children.emplace_back(current);
             // 构建路径
-            //std::cout<<TwoPinNetInedex<<std::endl;
+            //std::cout<<"TWOPINNETINDEX"<<TwoPinNetInedex<<std::endl;
+            //std::cout<<ChoosedPatternIndexArray[TwoPinNetInedex]<<" ";
             constructPathsfixed55(dstNode, current,ChoosedPatternIndexArray[TwoPinNetInedex],TwoPinNetInedex);
+            
             //TwoPinNetInedex++;
             //std::cout<<dstNode->x<<" "<<dstNode->y<<std::endl;
             //std::cout<<*dstNode.getPythonString(routingDag)<<std::endl;
@@ -368,6 +664,7 @@ void PatternRoute::constructRoutingDAGfixed55(vector<int>& ChoosedPatternIndexAr
     // 调用函数，构建路由DAG
     //log()<<ChoosedPatternIndexArray.size()<<std::endl;
     constructDag(routingDag, steinerTree);
+    //if (TwoPinNetInedex==ChoosedPatternIndexArray.size()) std::cout<<"TwoPinNetInedex"<<TwoPinNetInedex<<"ChoosedPatternIndexArray.size()"<<ChoosedPatternIndexArray.size()<<"bad "<<std::endl;
     //outf<<routingDag->getPythonString(routingDag)<<std::endl;
     // outf<<steinerTree->getPythonString(steinerTree)<<std::endl;
     //outf.close();
@@ -565,7 +862,7 @@ void PatternRoute::constructPaths(std::shared_ptr<PatternRoutingNode>& start, st
             utils::PointT<int> midPoint = pathIndex ? utils::PointT<int>(start->x, end->y) : utils::PointT<int>(end->x, start->y);
             std::shared_ptr<PatternRoutingNode> mid = std::make_shared<PatternRoutingNode>(midPoint, numDagNodes++, true);
             mid->paths = {{end}};
-            childPaths.push_back(mid);
+            childPaths.push_back(mid);//由于是地址引用，所以这里赋值，就会导致start的paths也会被修改
         }
     }
 }
@@ -621,6 +918,7 @@ void PatternRoute::constructPathsfixed55(std::shared_ptr<PatternRoutingNode>& st
     // 如果childIndex为-1，则将其设置为start->paths的最后一个元素的索引
     //log()<<"start"<<start->x<<" "<<start->y<<std::endl;
     //log()<<"end"<<end->x<<" "<<end->y<<std::endl;
+    //std::cout<<"TwoPinNetInedex"<<TwoPinNetInedex<<std::endl;
     if (childIndex == -1) {
         childIndex = start->paths.size();
         start->paths.emplace_back();
@@ -631,6 +929,7 @@ void PatternRoute::constructPathsfixed55(std::shared_ptr<PatternRoutingNode>& st
     // 如果start和end的x坐标或y坐标相等，则将end添加到childPaths中
     if (start->x == end->x && start->y == end->y) {
         childPaths.push_back(end);
+        TwoPinNetInedex++;
     }
     else if (start->x == end->x || start->y == end->y) {
         childPaths.push_back(end);
@@ -1183,6 +1482,7 @@ void PatternRoute::constructDetours(GridGraphView<bool>& congestionView) {
 // }
 
 void PatternRoute::run() {
+    //net.clearRoutingTree();
     calculateRoutingCosts(routingDag);
     //std::cout<<"done"<<std::endl;
     net.setRoutingTree(getRoutingTree(routingDag));

@@ -59,6 +59,10 @@ public:
     void extractEstimatedCongestionView_by_RUDY(GridGraphView<bool>& view) const; // 2D estimated look-up table 使用RUDY来实现
     void extractWireCostView(GridGraphView<CostT>& view) const;
     void updateWireCostView(GridGraphView<CostT>& view, std::shared_ptr<GRTreeNode> routingTree) const;
+
+    //CostT getdemand_for_mask(const int layerIndex, const utils::PointT<int> lower, const CapacityT demand = 1.0) const;
+    CostT getWiredemand_for_mask(const int layerIndex, const utils::PointT<int> lower, const CapacityT demand = 1.0) const;
+    float getViademand_for_mask(const int layerIndex, const utils::PointT<int> loc) const;
     
     // For visualization
     void write(const std::string heatmap_file="heatmap.txt") const;
@@ -100,6 +104,7 @@ private:
     
     inline double logistic(const CapacityT& input, const double slope) const;
     CostT getWireCost(const int layerIndex, const utils::PointT<int> lower, const CapacityT demand = 1.0) const;
+    
     
     // Methods for updating demands 
     void commit(const int layerIndex, const utils::PointT<int> lower, const CapacityT demand);

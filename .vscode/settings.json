@@ -77,6 +77,12 @@
         "ios": "cpp",
         "locale": "cpp",
         "queue": "cpp",
-        "charconv": "cpp"
+        "charconv": "cpp",
+        "codecvt": "cpp",
+        "forward_list": "cpp",
+        "regex": "cpp",
+        "shared_mutex": "cpp",
+        "valarray": "cpp",
+        "version": "cpp"
     }
 }
