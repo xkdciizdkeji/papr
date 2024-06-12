@@ -253,7 +253,7 @@ void PatternRoute::constructRoutingDAG_based_on_routingTree(std::shared_ptr<GRTr
         std::shared_ptr<PatternRoutingNode>& dstNode, std::shared_ptr<GRTreeNode>& gr
     ) {
         std::shared_ptr<PatternRoutingNode> current = std::make_shared<PatternRoutingNode>(
-            *gr, numDagNodes++
+            *gr, gr->layerIdx,numDagNodes++
         );
         for (auto grChild : gr->children) {
             constructDag(current, grChild);

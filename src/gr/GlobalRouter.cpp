@@ -14,6 +14,7 @@
 #include <ATen/ops/full_native.h>
 #include <torch/cuda.h>
 //#include <c10/cuda/CUDAGuard.h>
+//#include <c10/cuda/CUDAStream.h>
 
 
 //配置libtorch所需操作：
@@ -44,6 +45,7 @@ void GlobalRouter::route() {
     auto t = std::chrono::high_resolution_clock::now();
     
     vector<int> netIndices;
+    vector<int> netIndices_in_pretend_stage2(nets.size(),0);
     netIndices.reserve(nets.size());
     for (const auto& net : nets) netIndices.push_back(net.getIndex());
     // Stage 1: Pattern routing
@@ -145,6 +147,7 @@ void GlobalRouter::route() {
             patternRoute.run();
             auto Torchedge = net.getTorchEdges(net.getRoutingTree());
             TorchEdges0[netIndex][1].assign(Torchedge.begin(),Torchedge.end());
+            netIndices_in_pretend_stage2[netIndex]=1;
             //TorchEdges0[netIndex][1].clear();
             //TorchEdges0[netIndex][1].insert(TorchEdges0[netIndex][0].end(),Torchedge.begin(),Torchedge.end());
             // gridGraph.commitTree(net.getRoutingTree());
@@ -466,7 +469,7 @@ void GlobalRouter::route() {
     for (const int netIndex : netIndices)
     {
         auto patternRoute = PatternRoutes.find(netIndex)->second;
-        if (tree_selection_vector[netIndex]) patternRoute.constructRoutingDAG_based_on_routingTree(nets[netIndex].getRoutingTree());//若为1，则说明选了第二棵树
+        if (tree_selection_vector[netIndex]&&netIndices_in_pretend_stage2[netIndex]) patternRoute.constructRoutingDAG_based_on_routingTree(nets[netIndex].getRoutingTree());//若为1，则说明选了第二棵树
         else patternRoute.constructRoutingDAGfixed55(pattern_selection[netIndex][tree_selection_vector[netIndex]]);
 
         
@@ -483,7 +486,7 @@ void GlobalRouter::route() {
         
         patternRoute.run();
         //std::cout << "run_finished" << std::endl;
-        gridGraph.commitTree(nets[netIndex].getRoutingTree());//注意这一句，我觉得这一句可能有潜在的对照的错误,但是我的方法又有问题
+        gridGraph.commitTree(nets[netIndex].getRoutingTree());
     }
     log()<<"finish layer assignment and Commit Trees..." << std::endl;
     logeol();

@@ -150,11 +150,13 @@ struct Torchroute : torch::nn::Module
 		// cout << total_loss.device() << endl;
 		return total_loss;
 	}
+    float initial_t=1;
     torch::Tensor forwardfixed_agian(int net_num,int max_tree_num_in_one_single_net,int All_Two_Pin_Net_Num, int pn, torch::Tensor *mask,torch::Tensor *P_tree_mask_to_P_pattern, torch::Tensor capacity, int layersize,int xsize, int ysize, c10::Device dev)
 	{
 		//auto p_reshape = torch::nn::functional::gumbel_softmax(P_pattern, torch::nn::functional::GumbelSoftmaxFuncOptions().tau(0.1).dim(1)).reshape({en * pn, 1});
-        
-        auto P_pattern_reshape = torch::nn::functional::gumbel_softmax(P_pattern, torch::nn::functional::GumbelSoftmaxFuncOptions().tau(0.1).dim(1)).reshape({All_Two_Pin_Net_Num*pn, 1}).to(dev);
+        initial_t=0.9*initial_t;
+        std::cout << "this_epoch_t:"<<initial_t<<std::endl;
+        auto P_pattern_reshape = torch::nn::functional::gumbel_softmax(P_pattern, torch::nn::functional::GumbelSoftmaxFuncOptions().tau(initial_t).dim(1)).reshape({All_Two_Pin_Net_Num*pn, 1}).to(dev);
         //auto P_tree_reshape = torch::nn::functional::gumbel_softmax(P_tree, torch::nn::functional::GumbelSoftmaxFuncOptions().tau(0.1).dim(1)).unsqueeze(2).unsqueeze(3).expand({P_pattern.size(0),P_pattern.size(1),P_pattern.size(2),P_pattern.size(3)}).reshape({P_pattern.size(0)*P_pattern.size(1)*P_pattern.size(2)*P_pattern.size(3), 1}).to(dev);
         //auto P_tree_reshape = torch::nn::functional::gumbel_softmax(P_tree, torch::nn::functional::GumbelSoftmaxFuncOptions().tau(0.1).dim(1)).unsqueeze(2).unsqueeze(3).expand({P_pattern.size(0),P_pattern.size(1),P_pattern.size(2),P_pattern.size(3)}).reshape({P_pattern.size(0)*P_pattern.size(1)*P_pattern.size(2)*P_pattern.size(3), 1}).to(dev);
         //auto P_tree_reshape =(torch::_sparse_mm(*P_tree_mask_to_P_pattern,P_tree.reshape({net_num*max_tree_num_in_one_single_net,1}))).reshape({All_Two_Pin_Net_Num,pn});
@@ -189,27 +191,35 @@ struct Torchroute : torch::nn::Module
 		// cout << of_v << endl;
 
         //auto all_gcell_demand=torch::_sparse_mm(mask, p_reshape)
-        // system("nvidia-smi");
-        // std::cout<<"1"<<std::endl;
-        auto all_gcell_demand=torch::_sparse_mm(*mask, p_reshape);
-        // system("nvidia-smi");
-        // std::cout<<"2"<<std::endl;
+        //system("nvidia-smi");
+        //std::cout<<"1"<<std::endl;
+        //auto all_gcell_demand=torch::_sparse_mm(*mask, p_reshape);
+        auto all_gcell_demand=torch::mm(*mask, p_reshape);
+        torch::Tensor temp = torch::rand({all_gcell_demand.sizes()}).to(dev);
+        //system("nvidia-smi");
+        all_gcell_demand=all_gcell_demand*temp;
+        
+        std::cout << "this line has been executed" << std::endl;
+        //system("nvidia-smi");
+        std::cout<<"2"<<std::endl;
         
         
-        // std::cout<<all_gcell_demand.dtype()<<std::endl;
-        // std::cout<<all_gcell_demand.sizes()<<std::endl;
-        // std::cout<<all_gcell_demand.numel()<<std::endl;
-        // std::cout<<all_gcell_demand.element_size()<<std::endl;
-        // std::cout<<"all_gcell_demand:"<<all_gcell_demand.element_size()*all_gcell_demand.numel()<<"bits"<<std::endl;
-        // std::cout<<"p_reshape:"<<p_reshape.element_size()*p_reshape.numel()<<"bits"<<std::endl;
-        // std::cout<<"mask:"<<mask->element_size()*mask->numel()<<"bits"<<std::endl;
+        std::cout<<all_gcell_demand.dtype()<<std::endl;
+        std::cout<<all_gcell_demand.sizes()<<std::endl;
+        std::cout<<all_gcell_demand.numel()<<std::endl;
+        std::cout<<all_gcell_demand.element_size()<<std::endl;
+        std::cout<<"all_gcell_demand:"<<all_gcell_demand.element_size()*all_gcell_demand.numel()<<"bits"<<std::endl;
+        std::cout<<"p_reshape:"<<p_reshape.element_size()*p_reshape.numel()<<"bits"<<std::endl;
+        std::cout<<"mask:"<<mask->element_size()*mask->numel()<<"bits"<<std::endl;
+        
+        
         
 
 
-        // //输出all_gcell_demand的尺寸
+        // //输出all_gcell_demand的尺寸?
         // std::cout<<"all_gcell_demand: "<<all_gcell_demand.sizes()<<std::endl;
         // std::cout<<"all_gcell_demand: "<<all_gcell_demand[0][0]<<all_gcell_demand[10][0]<<all_gcell_demand[100][0]<<all_gcell_demand[1000][0]<<std::endl;
-        // //输出capacity的尺寸
+        // //输出capacity的尺寸?
         // std::cout<<"capacity: "<<capacity.sizes()<<std::endl;
         // std::cout<<"capacity: "<<capacity[0][0]<<capacity[10][0]<<capacity[100][0]<<capacity[1000][0]<<std::endl;
         
@@ -221,11 +231,11 @@ struct Torchroute : torch::nn::Module
         // system("nvidia-smi");
         // std::cout<<"3"<<std::endl;
         // auto cost1 = torch::sub(all_gcell_demand,capacity);
-        // //输出cost的尺寸
+        // //输出cost的尺寸?
         // std::cout<<"cost1: "<<cost1.sizes()<<std::endl;
         // std::cout<<"cost1: "<<cost1[0][0]<<cost1[10][0]<<cost1[100][0]<<cost1[1000][0]<<std::endl;
         // auto cost = torch::relu(cost1);
-        // //输出cost的尺寸
+        // //输出cost的尺寸?
         // std::cout<<"cost: "<<cost.sizes()<<std::endl;
         // std::cout<<"cost: "<<cost[0][0]<<cost[10][0]<<cost[100][0]<<cost[1000][0]<<std::endl;
         //auto cost = all_gcell_demand;
@@ -266,4 +276,5 @@ struct Torchroute : torch::nn::Module
     int pn;
 	torch::Tensor P_pattern;
     torch::Tensor P_tree;
+    
 };
