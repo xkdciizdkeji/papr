@@ -68,9 +68,11 @@ public:
     PatternRoute(GRNet& _net, const GridGraph& graph, const Parameters& param): 
         net(_net), gridGraph(graph), parameters(param), numDagNodes(0) {}
     void constructSteinerTree();
+    robin_hood::unordered_map<uint64_t, std::pair<utils::PointT<int>, utils::IntervalT<int>>> constructSteinerTree_return_selectedAccessPoints();
     void constructSteinerTree_Random();
     void constructSteinerTree_Random_multi(int treeNum);//可以同时建立多个树
-    void constructSteinerTree_based_on_routingTree(std::shared_ptr<GRTreeNode>);
+    void constructSteinerTree_based_on_routingTree(std::shared_ptr<GRTreeNode>,robin_hood::unordered_map<uint64_t, std::pair<utils::PointT<int>, utils::IntervalT<int>>> selectedAccessPoints);
+    void findAllTrees(std::shared_ptr<PatternRoutingNode> node, std::unordered_set<int>& specialNodes, std::vector<std::shared_ptr<PatternRoutingNode>>& path, std::vector<std::vector<std::shared_ptr<PatternRoutingNode>>>& results);
     void constructSteinerTree_based_on_routingTree63(std::shared_ptr<GRTreeNode>);
     void constructRoutingDAG();
     void constructRoutingDAG_based_on_routingTree(std::shared_ptr<GRTreeNode>);

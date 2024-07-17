@@ -231,6 +231,91 @@ void PatternRoute::constructSteinerTree() {
         constructTree(steinerTree, -1, root);
     }
 }
+
+robin_hood::unordered_map<uint64_t, std::pair<utils::PointT<int>, utils::IntervalT<int>>> PatternRoute::constructSteinerTree_return_selectedAccessPoints() {
+    // 1. Select access points
+    robin_hood::unordered_map<uint64_t, std::pair<utils::PointT<int>, utils::IntervalT<int>>> selectedAccessPoints;
+    gridGraph.selectAccessPoints(net, selectedAccessPoints);
+    
+    // 2. Construct Steiner tree
+    const int degree = selectedAccessPoints.size();
+    if (degree == 1) {
+        for (auto& accessPoint : selectedAccessPoints) {
+            steinerTree = std::make_shared<SteinerTreeNode>(accessPoint.second.first, accessPoint.second.second);
+        }
+    } else {
+        int xs[degree * 4];
+        int ys[degree * 4];
+        int i = 0;
+        for (auto& accessPoint : selectedAccessPoints) {
+            xs[i] = accessPoint.second.first.x;
+            ys[i] = accessPoint.second.first.y;
+            i++;
+        }
+        Tree flutetree = flute(degree, xs, ys, ACCURACY);
+        const int numBranches = degree + degree - 2;
+        vector<utils::PointT<int>> steinerPoints;
+        steinerPoints.reserve(numBranches);
+        vector<vector<int>> adjacentList(numBranches);
+        for (int branchIndex = 0; branchIndex < numBranches; branchIndex++) {
+            const Branch& branch = flutetree.branch[branchIndex];
+            steinerPoints.emplace_back(branch.x, branch.y);
+            if (branchIndex == branch.n) continue;
+            adjacentList[branchIndex].push_back(branch.n);
+            adjacentList[branch.n].push_back(branchIndex);
+        }
+        std::function<void(std::shared_ptr<SteinerTreeNode>&, int, int)> constructTree = [&] (
+            std::shared_ptr<SteinerTreeNode>& parent, int prevIndex, int curIndex
+        ) {
+            std::shared_ptr<SteinerTreeNode> current = std::make_shared<SteinerTreeNode>(steinerPoints[curIndex]);
+            if (parent != nullptr && parent->x == current->x && parent->y == current->y) {
+                for (int nextIndex : adjacentList[curIndex]) {
+                    if (nextIndex == prevIndex) continue;
+                    constructTree(parent, curIndex, nextIndex);
+                }
+                return;
+            }
+            // Build subtree
+            for (int nextIndex : adjacentList[curIndex]) {
+                if (nextIndex == prevIndex) continue;
+                constructTree(current, curIndex, nextIndex);
+            }
+            // Set fixed layer interval
+            uint64_t hash = gridGraph.hashCell(current->x, current->y);
+            if (selectedAccessPoints.find(hash) != selectedAccessPoints.end()) {
+                current->fixedLayers = selectedAccessPoints[hash].second;
+            }
+            // Connect current to parent
+            if (parent == nullptr) {
+                parent = current;
+            } else {
+                parent->children.emplace_back(current);
+            }
+        };
+        // Pick a root having degree 1
+        int root = 0;
+        std::function<bool(int)> hasDegree1 = [&] (int index) {
+            if (adjacentList[index].size() == 1) {
+                int nextIndex = adjacentList[index][0];
+                if (steinerPoints[index] == steinerPoints[nextIndex]) {
+                    return hasDegree1(nextIndex);
+                } else {
+                    return true;
+                }
+            } else {
+                return false;
+            }
+        };
+        for (int i = 0; i < steinerPoints.size(); i++) {
+            if (hasDegree1(i)) {
+                root = i;
+                break;
+            }
+        }
+        constructTree(steinerTree, -1, root);
+    }
+    return selectedAccessPoints;
+}
 void PatternRoute::constructSteinerTree_Random() {
     // 1. Select access points
     robin_hood::unordered_map<uint64_t, std::pair<utils::PointT<int>, utils::IntervalT<int>>> selectedAccessPoints;
@@ -430,15 +515,42 @@ void PatternRoute::constructSteinerTree_Random_multi(int treeNum) {
         for (int treecount=0;treecount<treeNum;++treecount) constructTree(steinerTree_multi[treecount], -1, root_multi[treecount]);
     }
 }
-void PatternRoute::constructSteinerTree_based_on_routingTree(std::shared_ptr<GRTreeNode> routingTree) {
+
+void PatternRoute::findAllTrees(std::shared_ptr<PatternRoutingNode> node, std::unordered_set<int>& specialNodes, std::vector<std::shared_ptr<PatternRoutingNode>>& path, std::vector<std::vector<std::shared_ptr<PatternRoutingNode>>>& results) {
+    if (!node) return;
+    
+    path.push_back(node);
+    
+    bool allSpecialNodesCovered = true;
+    for (int specialNode : specialNodes) {
+        if (none_of(path.begin(), path.end(), [specialNode](std::shared_ptr<PatternRoutingNode> n) { return n->index == specialNode; })) {
+            allSpecialNodesCovered = false;
+            break;
+        }
+    }
+
+    if (allSpecialNodesCovered) {
+        results.push_back(path);
+    }
+
+    for (auto& child : node->children) {
+        findAllTrees(child, specialNodes, path, results);
+    }
+
+    path.pop_back();
+}
+void PatternRoute::constructSteinerTree_based_on_routingTree(std::shared_ptr<GRTreeNode> routingTree,robin_hood::unordered_map<uint64_t, std::pair<utils::PointT<int>, utils::IntervalT<int>>> selectedAccessPoints) {
     //getsT() = nullptr;
     std::function<void(std::shared_ptr<SteinerTreeNode>&, std::shared_ptr<GRTreeNode>&)> construct_SteinerTree = [&] (
         std::shared_ptr<SteinerTreeNode>& dstNode, std::shared_ptr<GRTreeNode>& gr
     ) {
-        std::shared_ptr<SteinerTreeNode> current = std::make_shared<SteinerTreeNode>(
-            //*gr, gr->layerIdx,numDagNodes++
-            *gr, gr->layerIdx
-        );
+        
+        
+        std::shared_ptr<SteinerTreeNode> current = std::make_shared<SteinerTreeNode>(*gr);
+        uint64_t hash = gridGraph.hashCell(gr->x,gr->y);
+        if (selectedAccessPoints.find(hash) != selectedAccessPoints.end()) {//还原fixedlayer信息
+            current->fixedLayers = selectedAccessPoints[hash].second;
+        }
         for (auto grChild : gr->children) {
             construct_SteinerTree(current, grChild);
         }

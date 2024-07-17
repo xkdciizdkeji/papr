@@ -65,12 +65,22 @@ void GlobalRouter::route() {
     vector<vector<vector<TorchEdge>>> TorchEdges0(nets.size(),vector<vector<TorchEdge>>(Max_tree_num_in_single_net));//TorchEdges0.reserve(nets.size());
     
     vector<TorchEdge> TorchEdges;
-    vector<vector<bool>> enter_pretend_stage2_flag(nets.size(),vector<bool>(Max_tree_num_in_single_net,false));
+    int batch_size=10000;
+    vector<vector<TorchEdge>> TorchEdges_batch(ceil(float(net_num)/batch_size));//每batch_size个net一组
+    //vector<vector<bool>> enter_pretend_stage2_flag(nets.size(),vector<bool>(Max_tree_num_in_single_net,false));
     
     
     torch::Tensor link_P_tree_to_P_pattern;
     vector<int> link_P_tree_to_P_pattern_location_dimension0;
     vector<int> link_P_tree_to_P_pattern_location_dimension1;
+
+    vector<torch::Tensor> link_P_tree_to_P_pattern_batch(ceil(float(net_num)/batch_size));
+    vector<vector<int>> link_P_tree_to_P_pattern_location_dimension0_batch(ceil(float(net_num)/batch_size));
+    vector<vector<int>> link_P_tree_to_P_pattern_location_dimension1_batch(ceil(float(net_num)/batch_size));
+
+    torch::Tensor demand_mask;
+    torch::Tensor wirelength_mask;
+    torch::Tensor viacount_mask;
     
     
     
@@ -195,13 +205,15 @@ void GlobalRouter::route() {
             //     GRNet& net = nets[netIndex];
             //     gridGraph.commitTree(net.getRoutingTree(), true);
             // }
+            vector<double> time_ps2(3,0);
             sortNetIndices(netIndices);
             for (const int netIndex : netIndices) {
                 GRNet& net = nets[netIndex];
                 gridGraph.commitTree(net.getRoutingTree(), true);//true的目的是取消掉已经提交的tree，因为commit的本质就是将tree所占用的demand给更新的gridgraph上，那取消就是把已经占用的demand给减掉就相当于取消commit了
 
                 PatternRoute patternRoute(net, gridGraph, parameters);
-                patternRoute.constructSteinerTree();
+                //patternRoute.constructSteinerTree();
+                auto selectedAccessPoints=patternRoute.constructSteinerTree_return_selectedAccessPoints();
                 patternRoute.constructRoutingDAG();
                 
 
@@ -210,13 +222,19 @@ void GlobalRouter::route() {
                 // std::cout<<patternRoute.getsT()->getPythonString(patternRoute.getsT())<<std::endl;
                 //std::cout<<"before_detour"<<std::endl;
                 //string a=patternRoute.getrT()->getPythonString(patternRoute.getrT());
+                auto t0=std::chrono::high_resolution_clock::now();
                 patternRoute.constructDetours(congestionView); // KEY DIFFERENCE compared to stage 1
+                time_ps2[0]+=std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t0).count();
+                auto t1=std::chrono::high_resolution_clock::now();
                 //std::cout<<"after_detour"<<std::endl;
                 //string b=patternRoute.getrT()->getPythonString(patternRoute.getrT());
                 //if(a!=b) std::cout<<"before_detour"<<std::endl<<a<<std::endl<<"after_detour"<<std::endl<<b<<std::endl;
                 patternRoute.run();
+                time_ps2[1]+=std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t1).count();
+                auto t2=std::chrono::high_resolution_clock::now();
                 patternRoute.clear_steinerTree();
-                patternRoute.constructSteinerTree_based_on_routingTree(net.getRoutingTree());
+                patternRoute.constructSteinerTree_based_on_routingTree(net.getRoutingTree(),selectedAccessPoints);
+                time_ps2[2]+=std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t2).count();
                 //patternRoute.constructSteinerTree_based_on_routingTree63(net.getRoutingTree());
                 // std::cout<<patternRoute.getsT()->getPythonString(patternRoute.getsT())<<std::endl;
                 //std::cout<<std::endl;
@@ -238,12 +256,13 @@ void GlobalRouter::route() {
                 //TorchEdges0[netIndex][!tree_selection_vector[netIndex]].assign(Torchedge.begin(),Torchedge.end());
                 //TorchEdges0[netIndex][tree_next_update_vector[netIndex]].assign(Torchedge.begin(),Torchedge.end());
                 TorchEdges0[netIndex][tree_next_update_vector[netIndex]]=Torchedge;
-                enter_pretend_stage2_flag[netIndex][!tree_selection_vector[netIndex]]=true;
+                //enter_pretend_stage2_flag[netIndex][!tree_selection_vector[netIndex]]=true;
                 //TorchEdges0[netIndex][1].clear();
                 //TorchEdges0[netIndex][1].insert(TorchEdges0[netIndex][0].end(),Torchedge.begin(),Torchedge.end());
                 // gridGraph.commitTree(net.getRoutingTree());
                 // PatternRoutes_second.insert(std::make_pair(netIndex, patternRoute));
             }
+            std::cout<<"time_ps2:"<<time_ps2<<std::endl;
 
 
 
@@ -263,21 +282,71 @@ void GlobalRouter::route() {
             
         }
 
-        gridGraph.clean_gridGraph();//需要将已经占用的demand先清零一下
-        link_P_tree_to_P_pattern_location_dimension1.clear();
-        std::cout<<"link_P_tree_to_P_pattern_location_dimension1.size()"<<link_P_tree_to_P_pattern_location_dimension1.size()<<std::endl;
-        TorchEdges.clear();
-        //for(const auto& vec2D : TorchEdges0) for(const auto& vec1D : vec2D) TorchEdges.insert(TorchEdges.end(),vec1D.begin(),vec1D.end());
-        int tree_count=0;
-        for(const auto& vec2D : TorchEdges0){
-            for(const auto& vec1D : vec2D){
-                TorchEdges.insert(TorchEdges.end(),vec1D.begin(),vec1D.end());
-                //link_P_tree_to_P_pattern_location_dimension1.insert(link_P_tree_to_P_pattern_location_dimension1.end(),vec1D.size(),tree_count);
-                link_P_tree_to_P_pattern_location_dimension1.resize(link_P_tree_to_P_pattern_location_dimension1.size()+vec1D.size(),tree_count);
-                tree_count++;
+        // gridGraph.clean_gridGraph();//需要将已经占用的demand先清零一下
+        // link_P_tree_to_P_pattern_location_dimension1.clear();
+        // std::cout<<"link_P_tree_to_P_pattern_location_dimension1.size()"<<link_P_tree_to_P_pattern_location_dimension1.size()<<std::endl;
+        // TorchEdges.clear();
+        // //for(const auto& vec2D : TorchEdges0) for(const auto& vec1D : vec2D) TorchEdges.insert(TorchEdges.end(),vec1D.begin(),vec1D.end());
+        // int tree_count=0;
+        // for(const auto& vec2D : TorchEdges0){
+        //     for(const auto& vec1D : vec2D){
+        //         TorchEdges.insert(TorchEdges.end(),vec1D.begin(),vec1D.end());
+        //         //link_P_tree_to_P_pattern_location_dimension1.insert(link_P_tree_to_P_pattern_location_dimension1.end(),vec1D.size(),tree_count);
+        //         link_P_tree_to_P_pattern_location_dimension1.resize(link_P_tree_to_P_pattern_location_dimension1.size()+vec1D.size(),tree_count);
+        //         tree_count++;
             
+        //     }
+        // }
+
+
+        gridGraph.clean_gridGraph();//需要将已经占用的demand先清零一下
+        link_P_tree_to_P_pattern_location_dimension1_batch.clear();
+        link_P_tree_to_P_pattern_location_dimension1_batch.resize(ceil(float(net_num)/batch_size));
+        std::cout<<"link_P_tree_to_P_pattern_location_dimension1.size()"<<link_P_tree_to_P_pattern_location_dimension1.size()<<std::endl;
+        TorchEdges_batch.clear();
+        TorchEdges_batch.resize(ceil(float(net_num)/batch_size));
+        std::cout<<ceil(float(net_num)/batch_size)<<std::endl;
+        //std::cout<<TorchEdges_batch[ceil(net_num/batch_size)-1]<<std::endl;
+        //for(const auto& vec2D : TorchEdges0) for(const auto& vec1D : vec2D) TorchEdges.insert(TorchEdges.end(),vec1D.begin(),vec1D.end());
+        int tree_count_within_batch=0;
+        int batch_index=0;
+        for(int net_index=0;net_index<net_num;net_index++){
+            const auto& vector2D=TorchEdges0[net_index];
+            for(int tree_index=0;tree_index<Max_tree_num_in_single_net;tree_index++){
+                const auto& vector1D=vector2D[tree_index];
+                // std::cout<<"1"<<std::endl;
+                TorchEdges_batch[batch_index].insert(TorchEdges_batch[batch_index].end(),vector1D.begin(),vector1D.end());
+                link_P_tree_to_P_pattern_location_dimension1_batch[batch_index].resize(link_P_tree_to_P_pattern_location_dimension1_batch[batch_index].size()+vector1D.size(),tree_count_within_batch);
+                tree_count_within_batch++;
+            }
+            // if ((net_index+1)%batch_size==0&&net_index!=0) {
+            if ((net_index+1)%batch_size==0) {
+                batch_index++;
+                // std::cout<<batch_index<<std::endl;
+                tree_count_within_batch=0;
             }
         }
+
+
+        // for(int batch_index=0;batch_index<ceil(net_num/batch_size);batch_index++){
+        //     for(int net_index=0;net_index<net_num;net_index++){
+        //         const auto& vector2D=TorchEdges0[net_index];
+        //         for(int tree_index=0;tree_index<Max_tree_num_in_single_net;tree_index++){
+        //             const auto& vector1D=vector2D[tree_index];
+        //             // std::cout<<"1"<<std::endl;
+        //             TorchEdges_batch[batch_index].insert(TorchEdges_batch[batch_index].end(),vector1D.begin(),vector1D.end());
+        //             link_P_tree_to_P_pattern_location_dimension1_batch[batch_index].resize(link_P_tree_to_P_pattern_location_dimension1_batch[batch_index].size()+vector1D.size(),tree_count_within_batch);
+        //             tree_count_within_batch++;
+        //         }
+        //         // if ((net_index+1)%batch_size==0&&net_index!=0) {
+        //         if ((net_index+1)%batch_size==0) {
+        //             // std::cout<<"enter"<<std::endl;
+        //             // batch_index++;
+        //             tree_count_within_batch=0;
+        //         }
+        //     }
+        // }
+        std::cout<<"finish"<<std::endl;
 
         // log()<<"generate_all_two_pin_net_finish"<<std::endl;
         // logeol();
@@ -339,39 +408,70 @@ void GlobalRouter::route() {
         // log()<<"generate_treeforest_finish"<<std::endl;
         // logeol();
 
+        vector<int> alltwopinnet_num_within_batch(ceil(float(net_num)/batch_size));
+        vector<int> net_num_within_batch(ceil(float(net_num)/batch_size),batch_size);
+        if (net_num%batch_size!=0) net_num_within_batch[ceil(float(net_num)/batch_size)-1]=net_num%batch_size;
+        for (int batch_index=0;batch_index<ceil(float(net_num)/batch_size);batch_index++){
 
-        int alltwopinnet_num=TorchEdges.size();
-        link_P_tree_to_P_pattern_location_dimension0.clear();
-        link_P_tree_to_P_pattern_location_dimension0.resize(alltwopinnet_num);
-        std::cout<<link_P_tree_to_P_pattern_location_dimension0.size()<<std::endl;
-        log() <<alltwopinnet_num<< std::endl;
-        for (int i = 0; i < alltwopinnet_num; i++) link_P_tree_to_P_pattern_location_dimension0[i]=i;//link_P_tree_to_P_pattern_location_dimension0.push_back(i);//
-        std::cout<<link_P_tree_to_P_pattern_location_dimension0.size()<<std::endl;
-        // std::cout << "finish" << std::endl;
-        //std::cout << link_P_tree_to_P_pattern_location_dimension0.size() << std::endl;
-        //std::cout << link_P_tree_to_P_pattern_location_dimension1.size() << std::endl;
+        
+            alltwopinnet_num_within_batch[batch_index]=TorchEdges_batch[batch_index].size();
+            link_P_tree_to_P_pattern_location_dimension0_batch[batch_index].clear();
+            link_P_tree_to_P_pattern_location_dimension0_batch[batch_index].resize(alltwopinnet_num_within_batch[batch_index]);
+            // std::cout<<link_P_tree_to_P_pattern_location_dimension0_batch[batch_index].size()<<std::endl;
+            // log() <<alltwopinnet_num_within_batch[batch_index]<<":batch["<<batch_index<<"]"<< std::endl;
+            for (int i = 0; i < alltwopinnet_num_within_batch[batch_index]; i++) link_P_tree_to_P_pattern_location_dimension0_batch[batch_index][i]=i;//link_P_tree_to_P_pattern_location_dimension0.push_back(i);//
+            // std::cout<<link_P_tree_to_P_pattern_location_dimension0_batch[batch_index].size()<<std::endl;
+            // std::cout << "finish" << std::endl;
+            //std::cout << link_P_tree_to_P_pattern_location_dimension0.size() << std::endl;
+            //std::cout << link_P_tree_to_P_pattern_location_dimension1.size() << std::endl;
 
-        torch::Tensor link_P_tree_to_P_pattern_location_dimension0_tensor=torch::tensor(link_P_tree_to_P_pattern_location_dimension0,torch::kLong);
-        //std::cout << "1" << std::endl;
-        torch::Tensor link_P_tree_to_P_pattern_location_dimension1_tensor=torch::tensor(link_P_tree_to_P_pattern_location_dimension1,torch::kLong);
-        //std::cout << "1" << std::endl;
-        torch::Tensor link_P_tree_to_P_pattern_location_tensor=torch::stack({link_P_tree_to_P_pattern_location_dimension0_tensor,link_P_tree_to_P_pattern_location_dimension1_tensor});
-        //std::cout << "1" << std::endl;
-        torch::Tensor link_P_tree_to_P_pattern_location_values_tensor=torch::ones(link_P_tree_to_P_pattern_location_dimension0_tensor.sizes());
-        //std::cout << "1" << std::endl;
+            torch::Tensor link_P_tree_to_P_pattern_location_dimension0_tensor=torch::tensor(link_P_tree_to_P_pattern_location_dimension0,torch::kLong);
+            //std::cout << "1" << std::endl;
+            torch::Tensor link_P_tree_to_P_pattern_location_dimension1_tensor=torch::tensor(link_P_tree_to_P_pattern_location_dimension1,torch::kLong);
+            //std::cout << "1" << std::endl;
+            torch::Tensor link_P_tree_to_P_pattern_location_tensor=torch::stack({link_P_tree_to_P_pattern_location_dimension0_tensor,link_P_tree_to_P_pattern_location_dimension1_tensor});
+            //std::cout << "1" << std::endl;
+            torch::Tensor link_P_tree_to_P_pattern_location_values_tensor=torch::ones(link_P_tree_to_P_pattern_location_dimension0_tensor.sizes());
+            //std::cout << "1" << std::endl;
 
-        link_P_tree_to_P_pattern=torch::sparse_coo_tensor(link_P_tree_to_P_pattern_location_tensor,link_P_tree_to_P_pattern_location_values_tensor,{alltwopinnet_num,net_num*Max_tree_num_in_single_net});
+            link_P_tree_to_P_pattern_batch[batch_index] = torch::sparse_coo_tensor(link_P_tree_to_P_pattern_location_tensor,link_P_tree_to_P_pattern_location_values_tensor,{alltwopinnet_num_within_batch[batch_index],net_num_within_batch[batch_index]*Max_tree_num_in_single_net}).to(torch::kFloat).to(dev);
+        }
+
+
+
+
+        // int alltwopinnet_num=TorchEdges.size();
+        // link_P_tree_to_P_pattern_location_dimension0.clear();
+        // link_P_tree_to_P_pattern_location_dimension0.resize(alltwopinnet_num);
+        // std::cout<<link_P_tree_to_P_pattern_location_dimension0.size()<<std::endl;
+        // log() <<alltwopinnet_num<< std::endl;
+        // for (int i = 0; i < alltwopinnet_num; i++) link_P_tree_to_P_pattern_location_dimension0[i]=i;//link_P_tree_to_P_pattern_location_dimension0.push_back(i);//
+        // std::cout<<link_P_tree_to_P_pattern_location_dimension0.size()<<std::endl;
+        // // std::cout << "finish" << std::endl;
+        // //std::cout << link_P_tree_to_P_pattern_location_dimension0.size() << std::endl;
+        // //std::cout << link_P_tree_to_P_pattern_location_dimension1.size() << std::endl;
+
+        // torch::Tensor link_P_tree_to_P_pattern_location_dimension0_tensor=torch::tensor(link_P_tree_to_P_pattern_location_dimension0,torch::kLong);
+        // //std::cout << "1" << std::endl;
+        // torch::Tensor link_P_tree_to_P_pattern_location_dimension1_tensor=torch::tensor(link_P_tree_to_P_pattern_location_dimension1,torch::kLong);
+        // //std::cout << "1" << std::endl;
+        // torch::Tensor link_P_tree_to_P_pattern_location_tensor=torch::stack({link_P_tree_to_P_pattern_location_dimension0_tensor,link_P_tree_to_P_pattern_location_dimension1_tensor});
+        // //std::cout << "1" << std::endl;
+        // torch::Tensor link_P_tree_to_P_pattern_location_values_tensor=torch::ones(link_P_tree_to_P_pattern_location_dimension0_tensor.sizes());
+        // //std::cout << "1" << std::endl;
+
+        // link_P_tree_to_P_pattern=torch::sparse_coo_tensor(link_P_tree_to_P_pattern_location_tensor,link_P_tree_to_P_pattern_location_values_tensor,{alltwopinnet_num,net_num*Max_tree_num_in_single_net}).to(torch::kFloat).to(dev);
         
         
+        // // link_P_tree_to_P_pattern_location_dimension0_tensor.reset();
+        // // link_P_tree_to_P_pattern_location_dimension1_tensor.reset();
+        // // link_P_tree_to_P_pattern_location_tensor.reset();
+        // // link_P_tree_to_P_pattern_location_values_tensor.reset();
+
         // link_P_tree_to_P_pattern_location_dimension0_tensor.reset();
         // link_P_tree_to_P_pattern_location_dimension1_tensor.reset();
         // link_P_tree_to_P_pattern_location_tensor.reset();
         // link_P_tree_to_P_pattern_location_values_tensor.reset();
-
-        link_P_tree_to_P_pattern_location_dimension0_tensor.reset();
-        link_P_tree_to_P_pattern_location_dimension1_tensor.reset();
-        link_P_tree_to_P_pattern_location_tensor.reset();
-        link_P_tree_to_P_pattern_location_values_tensor.reset();
 
 
 
@@ -381,10 +481,8 @@ void GlobalRouter::route() {
         //optimize here
         // c10::DeviceType dev;
         // get_optim_device(&dev);
-        torch::Tensor demand_mask;
-        torch::Tensor wirelength_mask;
-        torch::Tensor viacount_mask;
-        link_P_tree_to_P_pattern=(link_P_tree_to_P_pattern).to(torch::kFloat).to(dev);
+        
+        // link_P_tree_to_P_pattern=(link_P_tree_to_P_pattern).to(torch::kFloat).to(dev);
         
         log()<<"link_P_tree_to_P_pattern_mask_finish"<<std::endl;
         logeol();
@@ -446,62 +544,191 @@ void GlobalRouter::route() {
         //         }
         //     }
         // }
-
-
-        create_masks_fixed_agian(2,gcell_num_x,gcell_num_y,TorchEdges,&demand_mask,&wirelength_mask,&viacount_mask,dev);
-        log()<<"generate_net_pass_through_gcell_mask_finish"<<std::endl;
-        logeol();
-        auto route = Torchroute(net_num,Max_tree_num_in_single_net,alltwopinnet_num,2);//int net_num,int max_tree_num_in_one_single_net, int two_pin_net_num, int pattern_num
-        route.train();
-        route.to(dev);
-        torch::optim::Adam optimizer(route.parameters(), torch::optim::AdamOptions(0.05));
-        float lastloss = 0.0;
-        int epoch = 0;
-        int max_epochs_num = 100;
-        for (epoch = 0; epoch < max_epochs_num; epoch++)
-        {
-            optimizer.zero_grad();
-            
-            //torch::Tensor loss = route.forward(TorchEdges.size(), 2, mask_h, mask_v, capacity, gcell_num_x, gcell_num_y, dev);
-            torch::Tensor loss = route.forwardfixed_agian(net_num,Max_tree_num_in_single_net,TorchEdges.size(), 2, &demand_mask,&wirelength_mask,&viacount_mask,&link_P_tree_to_P_pattern, compresed_capacity_map_tensor,2,gcell_num_x,gcell_num_y,dev);
-            loss.backward();
-            optimizer.step();
-            // cout << route.parameters() << endl;
-
-            // if (abs(loss.item().to<float>() - lastloss) / lastloss < 0.0002)
-            // {
-            //     lastloss = loss.item().to<float>();
-            //     break;
-            // }
-            // else
-            // {
-            //     lastloss = loss.item().to<float>();
-            //     std::cout << "loss: " << loss << std::endl;
-            // }
-        }
-        log() << "@epoch: " << epoch << ", Torch optimization stopped." << std::endl;
-        logeol();
-        std::cout << route.parameters().size() << std::endl;
-        std::cout << route.parameters()[0].sizes() << std::endl;
-        std::cout << route.parameters()[1].sizes() << std::endl;
         
-        //auto Pattern = torch::argmax(route.parameters()[0], 3).to(dev);
-        auto Pattern = torch::argmax(route.parameters()[0], 1).to(torch::kCPU).contiguous();
-        auto Tree_selection = torch::argmax(route.parameters()[1], 1).to(torch::kCPU).contiguous();
-        auto Tree_next_update = torch::argmin(route.parameters()[1], 1).to(torch::kCPU).contiguous();
-        std::cout << Pattern.dtype()<< std::endl;
-        std::cout << Tree_selection.dtype()<< std::endl;
 
 
-        long* Pattern_ptr = Pattern.data_ptr<long>();
-        long* Tree_selection_ptr = Tree_selection.data_ptr<long>();
-        long* Tree_next_update_ptr = Tree_next_update.data_ptr<long>();
-        //std::cout<<"ok"<<std::endl;
-        std::vector<int> Pattern_1d_vector(Pattern_ptr, Pattern_ptr + Pattern.numel());
-        std::vector<int> tree_selection_1d_vector(Tree_selection_ptr, Tree_selection_ptr + Tree_selection.numel());
-        std::vector<int> tree_next_update_1d_vector(Tree_next_update_ptr, Tree_next_update_ptr + Tree_next_update.numel());
+
+
+
+        //以下是分批优化版本
+        vector<torch::Tensor> demand_mask_batch(ceil(float(net_num)/batch_size));
+        vector<torch::Tensor> viacount_mask_batch(ceil(float(net_num)/batch_size));
+        
+        std::vector<int> Pattern_1d_vector;
+        std::vector<int> tree_selection_1d_vector;
+        std::vector<int> tree_next_update_1d_vector;
+        vector<double> time_opt(5,0);
+        for(int batch_index=0;batch_index<ceil(float(net_num)/batch_size);batch_index++){
+            // create_masks_fixed(2,gcell_num_x,gcell_num_y,TorchEdges_batch,&demand_mask,dev);
+            auto t0=std::chrono::high_resolution_clock::now();
+            
+            create_masks_fixed_agian_batch(2,gcell_num_x,gcell_num_y,TorchEdges_batch[batch_index],&demand_mask_batch[batch_index],&wirelength_mask,&viacount_mask_batch[batch_index],dev);
+            log()<<"generate_net_pass_through_gcell_mask_finish"<<std::endl;
+            logeol();
+            
+            auto t1=std::chrono::high_resolution_clock::now();
+            
+            auto route = Torchroute(net_num_within_batch[batch_index],Max_tree_num_in_single_net,alltwopinnet_num_within_batch[batch_index],2);//int net_num,int max_tree_num_in_one_single_net, int two_pin_net_num, int pattern_num
+            route.train();
+            route.to(dev);
+            torch::optim::Adam optimizer(route.parameters(), torch::optim::AdamOptions(0.3));
+        
+            auto t2=std::chrono::high_resolution_clock::now();
+
+            torch::Tensor this_batch_all_gcell_demand;
+            float lastloss = 0.0;
+            int epoch = 0;
+            int max_epochs_num = 100;
+            for (epoch = 0; epoch < max_epochs_num; epoch++)
+            {
+                optimizer.zero_grad();
+                //torch::Tensor loss = route.forward(TorchEdges.size(), 2, mask_h, mask_v, capacity, gcell_num_x, gcell_num_y, dev);
+                // torch::Tensor loss = route.forwardfixed_agian(net_num,Max_tree_num_in_single_net,TorchEdges.size(), 2, &demand_mask,&wirelength_mask,&viacount_mask,&link_P_tree_to_P_pattern, compresed_capacity_map_tensor,2,gcell_num_x,gcell_num_y,dev);
+                //torch::Tensor loss = route.forwardfixed(net_num,Max_tree_num_in_single_net,TorchEdges.size(), 2, &demand_mask,&wirelength_mask,&viacount_mask,&link_P_tree_to_P_pattern, compresed_capacity_map_tensor,2,gcell_num_x,gcell_num_y,dev);
+                torch::Tensor loss = route.forwardfixed_batch(net_num_within_batch[batch_index],Max_tree_num_in_single_net,TorchEdges_batch[batch_index].size(), 2,&demand_mask_batch[batch_index],&wirelength_mask,&viacount_mask_batch[batch_index],&link_P_tree_to_P_pattern_batch[batch_index], compresed_capacity_map_tensor,2,gcell_num_x,gcell_num_y,dev,batch_index,batch_size,this_batch_all_gcell_demand);
+                //torch::Tensor loss = route.forwardfixed_batch(net_num,Max_tree_num_in_single_net,TorchEdges.size(), 2,&demand_mask_batch[batch_index],&wirelength_mask,&viacount_mask,&link_P_tree_to_P_pattern, compresed_capacity_map_tensor,2,gcell_num_x,gcell_num_y,dev,batch_index,batch_size);
+                loss.backward();
+                optimizer.step();
+                // if (epoch==max_epochs_num-1) {compresed_capacity_map_tensor=torch::sub(compresed_capacity_map_tensor,this_batch_all_gcell_demand).to(dev);}
+                // cout << route.parameters() << endl;
+
+                // if (abs(loss.item().to<float>() - lastloss) / lastloss < 0.0002)
+                // {
+                //     lastloss = loss.item().to<float>();
+                //     break;
+                // }
+                // else
+                // {
+                //     lastloss = loss.item().to<float>();
+                //     std::cout << "loss: " << loss << std::endl;
+                // }
+            }
+            auto t3=std::chrono::high_resolution_clock::now();
+
+            compresed_capacity_map_tensor=torch::sub(compresed_capacity_map_tensor,this_batch_all_gcell_demand.detach()).to(dev);
+            log() << "@epoch: " << epoch << ", Torch optimization stopped." << std::endl;
+            logeol();
+        
+
+            std::cout << route.parameters().size() << std::endl;
+            std::cout << route.parameters()[0].sizes() << std::endl;
+            std::cout << route.parameters()[1].sizes() << std::endl;
+            
+            //auto Pattern = torch::argmax(route.parameters()[0], 3).to(dev);
+            auto Pattern = torch::argmax(route.parameters()[0], 1).to(torch::kCPU).contiguous();
+            auto Tree_selection = torch::argmax(route.parameters()[1], 1).to(torch::kCPU).contiguous();
+            auto Tree_next_update = torch::argmin(route.parameters()[1], 1).to(torch::kCPU).contiguous();
+            std::cout << Pattern.dtype()<< std::endl;
+            std::cout << Tree_selection.dtype()<< std::endl;
+
+            auto t4=std::chrono::high_resolution_clock::now();
+
+
+            long* Pattern_ptr = Pattern.data_ptr<long>();
+            long* Tree_selection_ptr = Tree_selection.data_ptr<long>();
+            long* Tree_next_update_ptr = Tree_next_update.data_ptr<long>();
+            //std::cout<<"ok"<<std::endl;
+            std::vector<int> Pattern_1d_vector_temp(Pattern_ptr, Pattern_ptr + Pattern.numel());
+            std::vector<int> tree_selection_1d_vector_temp(Tree_selection_ptr, Tree_selection_ptr + Tree_selection.numel());
+            std::vector<int> tree_next_update_1d_vector_temp(Tree_next_update_ptr, Tree_next_update_ptr + Tree_next_update.numel());
+
+            auto t5=std::chrono::high_resolution_clock::now();
+
+            Pattern_1d_vector.insert(Pattern_1d_vector.end(),Pattern_1d_vector_temp.begin(),Pattern_1d_vector_temp.end());
+            tree_selection_1d_vector.insert(tree_selection_1d_vector.end(),tree_selection_1d_vector_temp.begin(),tree_selection_1d_vector_temp.end());
+            tree_next_update_1d_vector.insert(tree_next_update_1d_vector.end(),tree_next_update_1d_vector_temp.begin(),tree_next_update_1d_vector_temp.end());
+
+            time_opt[0]+=std::chrono::duration<double>(t1-t0).count();
+            time_opt[1]+=std::chrono::duration<double>(t2-t1).count();
+            time_opt[2]+=std::chrono::duration<double>(t3-t2).count();
+            time_opt[3]+=std::chrono::duration<double>(t4-t3).count();
+            time_opt[4]+=std::chrono::duration<double>(t5-t4).count();
+            // time_opt[5]+=std::chrono::duration<double>(t2-t1).count();
+
+        }
+        std::cout<<time_opt[0]<<" "<<time_opt[1]<<" "<<time_opt[2]<<" "<<time_opt[3]<<" "<<time_opt[4]<<" "<<std::endl;
         tree_selection_vector = tree_selection_1d_vector;
         tree_next_update_vector = tree_next_update_1d_vector;
+        
+
+
+
+
+
+
+        // //以下是所有一块优化版本
+        // // create_masks_fixed(2,gcell_num_x,gcell_num_y,TorchEdges,&demand_mask,dev);
+        // create_masks_fixed_agian(2,gcell_num_x,gcell_num_y,TorchEdges,&demand_mask,&wirelength_mask,&viacount_mask,dev);
+        // log()<<"generate_net_pass_through_gcell_mask_finish"<<std::endl;
+        // logeol();
+        // auto route = Torchroute(net_num,Max_tree_num_in_single_net,alltwopinnet_num,2);//int net_num,int max_tree_num_in_one_single_net, int two_pin_net_num, int pattern_num
+        // route.train();
+        // route.to(dev);
+        // torch::optim::Adam optimizer(route.parameters(), torch::optim::AdamOptions(0.3));
+        // float lastloss = 0.0;
+        // int epoch = 0;
+        // int max_epochs_num = 100;
+        // for (epoch = 0; epoch < max_epochs_num; epoch++)
+        // {
+        //     optimizer.zero_grad();
+            
+        //     //torch::Tensor loss = route.forward(TorchEdges.size(), 2, mask_h, mask_v, capacity, gcell_num_x, gcell_num_y, dev);
+        //     // torch::Tensor loss = route.forwardfixed_agian(net_num,Max_tree_num_in_single_net,TorchEdges.size(), 2, &demand_mask,&wirelength_mask,&viacount_mask,&link_P_tree_to_P_pattern, compresed_capacity_map_tensor,2,gcell_num_x,gcell_num_y,dev);
+        //     torch::Tensor loss = route.forwardfixed(net_num,Max_tree_num_in_single_net,TorchEdges.size(), 2, &demand_mask,&wirelength_mask,&viacount_mask,&link_P_tree_to_P_pattern, compresed_capacity_map_tensor,2,gcell_num_x,gcell_num_y,dev);
+        //     loss.backward();
+        //     optimizer.step();
+        //     // cout << route.parameters() << endl;
+
+        //     // if (abs(loss.item().to<float>() - lastloss) / lastloss < 0.0002)
+        //     // {
+        //     //     lastloss = loss.item().to<float>();
+        //     //     break;
+        //     // }
+        //     // else
+        //     // {
+        //     //     lastloss = loss.item().to<float>();
+        //     //     std::cout << "loss: " << loss << std::endl;
+        //     // }
+        // }
+        // log() << "@epoch: " << epoch << ", Torch optimization stopped." << std::endl;
+        // logeol();
+        // std::cout << route.parameters().size() << std::endl;
+        // std::cout << route.parameters()[0].sizes() << std::endl;
+        // std::cout << route.parameters()[1].sizes() << std::endl;
+        
+        // //auto Pattern = torch::argmax(route.parameters()[0], 3).to(dev);
+        // auto Pattern = torch::argmax(route.parameters()[0], 1).to(torch::kCPU).contiguous();
+        // auto Tree_selection = torch::argmax(route.parameters()[1], 1).to(torch::kCPU).contiguous();
+        // auto Tree_next_update = torch::argmin(route.parameters()[1], 1).to(torch::kCPU).contiguous();
+        // std::cout << Pattern.dtype()<< std::endl;
+        // std::cout << Tree_selection.dtype()<< std::endl;
+
+
+        // long* Pattern_ptr = Pattern.data_ptr<long>();
+        // long* Tree_selection_ptr = Tree_selection.data_ptr<long>();
+        // long* Tree_next_update_ptr = Tree_next_update.data_ptr<long>();
+        // //std::cout<<"ok"<<std::endl;
+        // std::vector<int> Pattern_1d_vector(Pattern_ptr, Pattern_ptr + Pattern.numel());
+        // std::vector<int> tree_selection_1d_vector(Tree_selection_ptr, Tree_selection_ptr + Tree_selection.numel());
+        // std::vector<int> tree_next_update_1d_vector(Tree_next_update_ptr, Tree_next_update_ptr + Tree_next_update.numel());
+        // tree_selection_vector = tree_selection_1d_vector;
+        // tree_next_update_vector = tree_next_update_1d_vector;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         // std::cout<<Pattern_1d_vector.size()<<std::endl;
         // std::cout<<Pattern_1d_vector[0]<<std::endl;
         // std::cout<<Pattern_1d_vector[1]<<std::endl;
@@ -605,7 +832,7 @@ void GlobalRouter::route() {
         // }
         
         //auto tree = torch::argmax(route.parameters()[1],1);
-        std::cout << Pattern.sizes() << std::endl;
+        // std::cout << Pattern.sizes() << std::endl;
 
 
         netIndices.clear();
@@ -638,7 +865,7 @@ void GlobalRouter::route() {
             //std::cout<<pattern_selection[netIndex][tree_selection_vector[netIndex]]<<std::endl;
             // std::cout<<netIndex<<std::endl;
             patternRoute.constructRoutingDAGfixed55(pattern_selection[netIndex][tree_selection_vector[netIndex]]);
-            PatternRoutes_stage2.insert(std::make_pair(netIndex, patternRoute));
+            // PatternRoutes_stage2.insert(std::make_pair(netIndex, patternRoute));
 
             //std::cout<<std::endl;
             // PatternRoute patternRoute(nets[netIndex], gridGraph, parameters);
@@ -1604,7 +1831,8 @@ c10::DeviceType* GlobalRouter::get_optim_device(c10::DeviceType *dev)
 
 
 //resize+赋值+兼容了直线布线+产生wirelengthmask以及viacountmask
-void GlobalRouter::create_masks_fixed_agian(int Layer_Num,int Gcell_Num_X, int Gcell_Num_Y,vector<TorchEdge> Two_Pin_net_vector,torch::Tensor *All_Gcell_Mask,torch::Tensor *Wirelength_Mask,torch::Tensor *Viacount_Mask, c10::Device device)//这是针对四维的P矩阵使用的mask
+// void GlobalRouter::create_masks_fixed_agian_batch(int Layer_Num,int Gcell_Num_X, int Gcell_Num_Y,vector<TorchEdge> Two_Pin_net_vector,vector<torch::Tensor> *All_Gcell_Mask,torch::Tensor *Wirelength_Mask,torch::Tensor *Viacount_Mask, c10::Device device,int batch_size)//这是针对四维的P矩阵使用的mask
+void GlobalRouter::create_masks_fixed_agian_batch(int Layer_Num,int Gcell_Num_X, int Gcell_Num_Y,vector<TorchEdge> Two_Pin_net_vector,torch::Tensor *All_Gcell_Mask,torch::Tensor *Wirelength_Mask,torch::Tensor *Viacount_Mask, c10::Device device)//这是针对四维的P矩阵使用的mask
 {
 	auto Patterns=linkBetweenSelectedPatternLayerAndLPatternIndex(Layer_Num);
     
@@ -1619,7 +1847,7 @@ void GlobalRouter::create_masks_fixed_agian(int Layer_Num,int Gcell_Num_X, int G
     vector<float> pass_through_demand;
 
 
-    vector<float> wirelength_of_all_two_pin_net(2*Two_Pin_net_vector.size(),0);
+    // vector<float> wirelength_of_all_two_pin_net(2*Two_Pin_net_vector.size(),0);
     vector<int> turning_points_count_of_all_two_pin_net(2*Two_Pin_net_vector.size(),0);
 
 
@@ -1829,8 +2057,8 @@ void GlobalRouter::create_masks_fixed_agian(int Layer_Num,int Gcell_Num_X, int G
                         pass_through_demand[location_count]=1;
                         location_count++;
 
-                        wirelength_of_all_two_pin_net[net_index*pattern_num]+=gridGraph.getEdgeLength(one_step_layerindex%2,x_index);
-                        wirelength_of_all_two_pin_net[net_index*pattern_num+1]+=gridGraph.getEdgeLength(one_step_layerindex%2,x_index);
+                        // wirelength_of_all_two_pin_net[net_index*pattern_num]+=gridGraph.getEdgeLength(one_step_layerindex%2,x_index);
+                        // wirelength_of_all_two_pin_net[net_index*pattern_num+1]+=gridGraph.getEdgeLength(one_step_layerindex%2,x_index);
                     }
                 }
                 //否则是要纵向走
@@ -1845,8 +2073,8 @@ void GlobalRouter::create_masks_fixed_agian(int Layer_Num,int Gcell_Num_X, int G
                         pass_through_demand[location_count]=1;
                         location_count++;
 
-                        wirelength_of_all_two_pin_net[net_index*pattern_num]+=gridGraph.getEdgeLength(one_step_layerindex%2,y_index);
-                        wirelength_of_all_two_pin_net[net_index*pattern_num+1]+=gridGraph.getEdgeLength(one_step_layerindex%2,y_index);
+                        // wirelength_of_all_two_pin_net[net_index*pattern_num]+=gridGraph.getEdgeLength(one_step_layerindex%2,y_index);
+                        // wirelength_of_all_two_pin_net[net_index*pattern_num+1]+=gridGraph.getEdgeLength(one_step_layerindex%2,y_index);
                     }
                 }
 
@@ -1919,7 +2147,7 @@ void GlobalRouter::create_masks_fixed_agian(int Layer_Num,int Gcell_Num_X, int G
                         pass_through_demand[location_count]=1;
                         location_count++;
 
-                        wirelength_of_all_two_pin_net[net_index*pattern_num+pattern_index]+=gridGraph.getEdgeLength(first_step_layerindex,x_index);
+                        // wirelength_of_all_two_pin_net[net_index*pattern_num+pattern_index]+=gridGraph.getEdgeLength(first_step_layerindex,x_index);
                     }
                     for(int layer_index=min(first_step_layerindex,second_step_layerindex); layer_index<max(first_step_layerindex,second_step_layerindex); layer_index++){
                         //lowerLoc
@@ -1961,7 +2189,7 @@ void GlobalRouter::create_masks_fixed_agian(int Layer_Num,int Gcell_Num_X, int G
                         pass_through_demand[location_count]=1;
                         location_count++;
 
-                        wirelength_of_all_two_pin_net[net_index*pattern_num+pattern_index]+=gridGraph.getEdgeLength(second_step_layerindex,y_index);
+                        // wirelength_of_all_two_pin_net[net_index*pattern_num+pattern_index]+=gridGraph.getEdgeLength(second_step_layerindex,y_index);
                     }
                 }
                 else{//如果第一步是在奇数层布线，说明要先竖向走线，pattern的拐点在（x1，y2）
@@ -1975,7 +2203,7 @@ void GlobalRouter::create_masks_fixed_agian(int Layer_Num,int Gcell_Num_X, int G
                         pass_through_demand[location_count]=1;
                         location_count++;
 
-                        wirelength_of_all_two_pin_net[net_index*pattern_num+pattern_index]+=gridGraph.getEdgeLength(first_step_layerindex,y_index);
+                        // wirelength_of_all_two_pin_net[net_index*pattern_num+pattern_index]+=gridGraph.getEdgeLength(first_step_layerindex,y_index);
                     }
                     for(int layer_index=min(first_step_layerindex,second_step_layerindex); layer_index<max(first_step_layerindex,second_step_layerindex); layer_index++){
                         //lowerLoc
@@ -2017,7 +2245,7 @@ void GlobalRouter::create_masks_fixed_agian(int Layer_Num,int Gcell_Num_X, int G
                         pass_through_demand[location_count]=1;
                         location_count++;
 
-                        wirelength_of_all_two_pin_net[net_index*pattern_num+pattern_index]+=gridGraph.getEdgeLength(second_step_layerindex,x_index);
+                        // wirelength_of_all_two_pin_net[net_index*pattern_num+pattern_index]+=gridGraph.getEdgeLength(second_step_layerindex,x_index);
                     }
                         
                 }
@@ -2110,7 +2338,1051 @@ void GlobalRouter::create_masks_fixed_agian(int Layer_Num,int Gcell_Num_X, int G
     //*All_Gcell_Mask = torch::sparse_coo_tensor(location_index_tensor,value,{Layer_Num*Gcell_Num_X*Gcell_Num_Y,long(edges.size())*Patterns.size()});
     *All_Gcell_Mask = torch::sparse_coo_tensor(location_index_tensor, value,{Layer_Num*Gcell_Num_X*Gcell_Num_Y,two_pin_net_num*pattern_num}).to(device);//这个地方的类型必须是kFloat，如果是kInt就会有问题
     
-    *Wirelength_Mask = torch::tensor(wirelength_of_all_two_pin_net).reshape({1,2*two_pin_net_num}).to(device);
+    // *Wirelength_Mask = torch::tensor(wirelength_of_all_two_pin_net).reshape({1,2*two_pin_net_num}).to(device);
+    *Viacount_Mask = torch::tensor(turning_points_count_of_all_two_pin_net,torch::kFloat).reshape({1,2*two_pin_net_num}).to(device);
+
+    std::cout<<All_Gcell_Mask->dtype()<<std::endl;
+    std::cout<<Wirelength_Mask->dtype()<<std::endl;
+    std::cout<<Viacount_Mask->dtype()<<std::endl;
+    //*All_Gcell_Mask = (*All_Gcell_Mask).to(torch::kFloat).to(device);//这个地方的类型必须是kFloat，如果是kInt就会有问题
+    //for (int64_t dim : *All_Gcell_Mask.sizes()) std::cout<<dim<<" ";
+    log() << "update mask complete!" << std::endl;
+
+
+	return;
+    // auto Patterns=linkBetweenSelectedPatternLayerAndLPatternIndex(Layer_Num);
+    
+    // log() << "start updating masks" << std::endl;
+    // vector<int> location_layer_index;
+    // vector<int> location_x_index;
+    // vector<int> location_y_index;
+    // // vector<int> location_net_index;
+    // // vector<int> location_tree_index;
+    // vector<int> location_two_pin_net_index;
+    // vector<int> location_pattern_index;
+    // vector<float> pass_through_demand;
+
+
+    // // vector<float> wirelength_of_all_two_pin_net(2*Two_Pin_net_vector.size(),0);
+    // vector<int> turning_points_count_of_all_two_pin_net(2*Two_Pin_net_vector.size(),0);
+
+
+
+    // // int net_num=Two_Pin_net_vector.size();
+    // // //以下一段可以获取所有net中最大的tree_num和所有tree中最大的twopinnet_num
+    // // int Max_tree_num_in_single_net=0;
+    // // int Max_twopinnet_num_in_single_tree=0;
+    // // for (const auto& net : Two_Pin_net_vector){
+    // //     Max_tree_num_in_single_net = std::max(Max_tree_num_in_single_net,static_cast<int>(net.size()));
+    // //     for (const auto& tree : net){
+    // //         Max_twopinnet_num_in_single_tree = std::max(Max_twopinnet_num_in_single_tree,static_cast<int>(tree.size()));
+    // //     }
+    // // }
+    // int two_pin_net_num=Two_Pin_net_vector.size();
+    // int pattern_num=Patterns.size();
+
+    
+
+    // //int batch_num=(two_pin_net_num%batch_size)>0?two_pin_net_num/batch_size+1:two_pin_net_num/batch_size;
+    // int batch_num=ceil(two_pin_net_num/batch_size);
+    // std::cout<<"how many batch:"<<batch_num;
+    // for(int batch_index=0;batch_index<batch_num;batch_index++){
+
+    //     int location_length=0;
+    //     for (int net_index=batch_index*batch_size; net_index<(batch_index+1)*batch_size; net_index++){
+    //         auto pin1_layer_index=Two_Pin_net_vector[net_index].pin1.layer;
+    //         auto pin1_x_index=Two_Pin_net_vector[net_index].pin1.x;
+    //         auto pin1_y_index=Two_Pin_net_vector[net_index].pin1.y;
+
+    //         auto pin2_layer_index=Two_Pin_net_vector[net_index].pin2.layer;
+    //         auto pin2_x_index=Two_Pin_net_vector[net_index].pin2.x;
+    //         auto pin2_y_index=Two_Pin_net_vector[net_index].pin2.y;
+    //         //assert(!((pin1_x_index==pin2_x_index)&&(pin1_y_index==pin2_y_index)));
+    //         if((pin1_x_index==pin2_x_index)&&(pin1_y_index==pin2_y_index)) std::cout<<"this is not a two pin net"<<std::endl;
+    //         if((pin1_y_index==pin2_y_index)||(pin1_x_index==pin2_x_index)){//说明是直线走线的net
+    //             for(int pattern_index=0; pattern_index<Patterns.size(); pattern_index++){
+    //                 int first_step_layerindex=Patterns[pattern_index][0];//在模型中仍然假定其是两步走的，只不过其中的一步走的长度是0
+    //                 int second_step_layerindex=Patterns[pattern_index][1];
+
+    //                 int one_step_layerindex=pin1_y_index==pin2_y_index?
+    //                                         (first_step_layerindex%2==0?first_step_layerindex:second_step_layerindex)://若是horizonal（说明直线走线只能走偶数层），且firstlayer是偶数，说明这条线直线走到就是这个firstlayer
+    //                                         (first_step_layerindex%2==1?first_step_layerindex:second_step_layerindex);
+
+    //                 //先是原地穿孔
+    //                 location_length+=max(pin1_layer_index,one_step_layerindex)-min(pin1_layer_index,one_step_layerindex);
+    //                 location_length+=max(pin1_layer_index,one_step_layerindex)-min(pin1_layer_index,one_step_layerindex);
+
+    //                 //第二段，由one_step_layerindex决定是先横着走还是先竖着走
+    //                 //若是要横向走
+    //                 if(one_step_layerindex%2==0)location_length+=max(pin1_x_index,pin2_x_index)-min(pin1_x_index,pin2_x_index);
+    //                 //否则是要纵向走
+    //                 else location_length+=max(pin1_y_index,pin2_y_index)-min(pin1_y_index,pin2_y_index);
+
+
+    //                 //最后还是原地穿孔
+    //                 location_length+=max(pin2_layer_index,one_step_layerindex)-min(pin2_layer_index,one_step_layerindex);
+    //                 location_length+=max(pin2_layer_index,one_step_layerindex)-min(pin2_layer_index,one_step_layerindex);
+    //             }
+    //         }
+    //         else{//斜线情况
+    //             for(int pattern_index=0; pattern_index<Patterns.size(); pattern_index++){
+    //                 int first_step_layerindex=Patterns[pattern_index][0];
+                    
+    //                 int second_step_layerindex=Patterns[pattern_index][1];
+
+    //                 //第一段原地穿孔
+    //                 // for(int layer_index=min(pin1_layer_index,first_step_layerindex); layer_index<=max(pin1_layer_index,first_step_layerindex); layer_index++){
+    //                 //     location_layer_index.push_back(layer_index);
+    //                 //     location_x_index.push_back(pin1_x_index);
+    //                 //     location_y_index.push_back(pin1_y_index);
+    //                 //     location_two_pin_net_index.push_back(net_index);
+    //                 //     location_pattern_index.push_back(pattern_index);
+    //                 // }
+    //                 location_length+=max(pin1_layer_index,first_step_layerindex)-min(pin1_layer_index,first_step_layerindex);
+    //                 location_length+=max(pin1_layer_index,first_step_layerindex)-min(pin1_layer_index,first_step_layerindex);
+    //                 //第二段，由first_layer_index决定是先横着走还是先竖着走
+    //                 if(first_step_layerindex%2==0){//第一段是横向走线，说明要横向走，那么pattern的拐点在（x2，y1）
+    //                     // for(int x_index=min(pin1_x_index,pin2_x_index); x_index<=max(pin1_x_index,pin2_x_index); x_index++){
+    //                     //     location_layer_index.emplace_back(first_step_layerindex);
+    //                     //     location_x_index.emplace_back(x_index);
+    //                     //     location_y_index.emplace_back(pin1_y_index);
+    //                     //     location_two_pin_net_index.emplace_back(net_index);
+    //                     //     location_pattern_index.emplace_back(pattern_index);
+    //                     // }
+    //                     location_length+=max(pin1_x_index,pin2_x_index)-min(pin1_x_index,pin2_x_index);
+                        
+    //                     // for(int layer_index=min(first_step_layerindex,second_step_layerindex); layer_index<=max(first_step_layerindex,second_step_layerindex); layer_index++){
+    //                     //     location_layer_index.push_back(layer_index);
+    //                     //     location_x_index.push_back(pin2_x_index);
+    //                     //     location_y_index.push_back(pin1_y_index);
+    //                     //     location_two_pin_net_index.push_back(net_index);
+    //                     //     location_pattern_index.push_back(pattern_index);
+    //                     // }
+    //                     location_length+=max(first_step_layerindex,second_step_layerindex)-min(first_step_layerindex,second_step_layerindex);
+    //                     location_length+=max(first_step_layerindex,second_step_layerindex)-min(first_step_layerindex,second_step_layerindex);
+
+    //                     // for(int y_index=min(pin2_y_index,pin1_y_index); y_index<=max(pin2_y_index,pin1_y_index); y_index++){
+    //                     //     location_layer_index.emplace_back(second_step_layerindex);
+    //                     //     location_x_index.emplace_back(pin2_x_index);
+    //                     //     location_y_index.emplace_back(y_index);
+    //                     //     location_two_pin_net_index.emplace_back(net_index);
+    //                     //     location_pattern_index.emplace_back(pattern_index);
+    //                     // }
+    //                     location_length+=max(pin2_y_index,pin1_y_index)-min(pin2_y_index,pin1_y_index);
+    //                 }
+    //                 else{//如果第一步是在奇数层布线，说明要先竖向走线，pattern的拐点在（x1，y2）
+    //                     // for(int y_index=min(pin2_y_index,pin1_y_index); y_index<=max(pin2_y_index,pin1_y_index); y_index++){
+    //                     //     location_layer_index.emplace_back(first_step_layerindex);
+    //                     //     location_x_index.emplace_back(pin1_x_index);
+    //                     //     location_y_index.emplace_back(y_index);
+    //                     //     location_two_pin_net_index.emplace_back(net_index);
+    //                     //     location_pattern_index.emplace_back(pattern_index);
+    //                     // }
+    //                     location_length+=max(pin1_y_index,pin2_y_index)-min(pin1_y_index,pin2_y_index);
+                        
+    //                     // for(int layer_index=min(first_step_layerindex,second_step_layerindex); layer_index<=max(first_step_layerindex,second_step_layerindex); layer_index++){
+    //                     //     location_layer_index.push_back(layer_index);
+    //                     //     location_x_index.push_back(pin1_x_index);
+    //                     //     location_y_index.push_back(pin2_y_index);
+    //                     //     location_two_pin_net_index.push_back(net_index);
+    //                     //     location_pattern_index.push_back(pattern_index);
+    //                     // }
+    //                     location_length+=max(first_step_layerindex,second_step_layerindex)-min(first_step_layerindex,second_step_layerindex);
+    //                     location_length+=max(first_step_layerindex,second_step_layerindex)-min(first_step_layerindex,second_step_layerindex);
+    //                     // for(int x_index=min(pin2_x_index,pin1_x_index); x_index<=max(pin2_x_index,pin1_x_index); x_index++){
+    //                     //     location_layer_index.emplace_back(second_step_layerindex);
+    //                     //     location_x_index.emplace_back(x_index);
+    //                     //     location_y_index.emplace_back(pin2_y_index);
+    //                     //     location_two_pin_net_index.emplace_back(net_index);
+    //                     //     location_pattern_index.emplace_back(pattern_index);
+    //                     // }
+    //                     location_length+=max(pin2_x_index,pin1_x_index)-min(pin2_x_index,pin1_x_index);
+                            
+    //                 }
+    //                 // for(int layer_index=min(pin2_layer_index,second_step_layerindex); layer_index<=max(pin2_layer_index,second_step_layerindex); layer_index++){
+    //                 //     location_layer_index.push_back(layer_index);
+    //                 //     location_x_index.push_back(pin2_x_index);
+    //                 //     location_y_index.push_back(pin2_y_index);
+    //                 //     location_two_pin_net_index.push_back(net_index);
+    //                 //     location_pattern_index.push_back(pattern_index);
+    //                 // }
+    //                 location_length+=max(pin2_layer_index,second_step_layerindex)-min(pin2_layer_index,second_step_layerindex);
+    //                 location_length+=max(pin2_layer_index,second_step_layerindex)-min(pin2_layer_index,second_step_layerindex);
+    //             }
+    //         }
+    //     }
+
+    //     location_layer_index.resize(location_length);
+    //     location_x_index.resize(location_length);
+    //     location_y_index.resize(location_length);
+    //     //location_net_index.resize(location_length);
+    //     //location_tree_index.resize(location_length);
+    //     location_two_pin_net_index.resize(location_length);
+    //     location_pattern_index.resize(location_length);
+    //     pass_through_demand.resize(location_length);
+    //     int location_count = 0;
+
+
+    //     for (int net_index=batch_index*batch_size; net_index<(batch_index+1)*batch_size; net_index++){
+    //         auto pin1_layer_index=Two_Pin_net_vector[net_index].pin1.layer;
+    //         auto pin1_x_index=Two_Pin_net_vector[net_index].pin1.x;
+    //         auto pin1_y_index=Two_Pin_net_vector[net_index].pin1.y;
+
+    //         auto pin2_layer_index=Two_Pin_net_vector[net_index].pin2.layer;
+    //         auto pin2_x_index=Two_Pin_net_vector[net_index].pin2.x;
+    //         auto pin2_y_index=Two_Pin_net_vector[net_index].pin2.y;
+    //         if ((pin1_y_index==pin2_y_index)||(pin1_x_index==pin2_x_index)){//说明是直线走线的net
+    //             for(int pattern_index=0; pattern_index<Patterns.size(); pattern_index++){
+    //                 int first_step_layerindex=Patterns[pattern_index][0];//在模型中仍然假定其是两步走的，只不过其中的一步走的长度是0
+    //                 int second_step_layerindex=Patterns[pattern_index][1];
+
+    //                 int one_step_layerindex=pin1_y_index==pin2_y_index?
+    //                                         (first_step_layerindex%2==0?first_step_layerindex:second_step_layerindex)://若是horizonal（说明直线走线只能走偶数层），且firstlayer是偶数，说明这条线直线走到就是这个firstlayer
+    //                                         (first_step_layerindex%2==1?first_step_layerindex:second_step_layerindex);
+
+    //                 //先是原地穿孔
+    //                 for(int layer_index=min(pin1_layer_index,one_step_layerindex);layer_index<max(pin1_layer_index,one_step_layerindex);layer_index++){
+    //                     //lowerLoc
+    //                     location_layer_index[location_count]=layer_index;
+    //                     location_x_index[location_count]=pin1_x_index>0?pin1_x_index-1:0;//因为只有两层，所以穿孔的较低层一定是在第0层的。如果后续改成了3D形式的，那这里一定需要变化。并且要注意这里的坐标如果本来是0的话，经过-1就小于0了，会导致cuda报错（这个害惨我了，找了老长时间）
+    //                     location_y_index[location_count]=pin1_y_index;
+    //                     location_two_pin_net_index[location_count]=net_index;
+    //                     location_pattern_index[location_count]=pattern_index;
+    //                     pass_through_demand[location_count]=gridGraph.getViademand_for_mask(layer_index,{pin1_x_index,pin1_y_index});
+    //                     //pass_through_demand[location_count]=1;
+    //                     location_count++;
+
+    //                     //Loc
+    //                     location_layer_index[location_count]=layer_index;
+    //                     location_x_index[location_count]=pin1_x_index;
+    //                     location_y_index[location_count]=pin1_y_index;
+    //                     location_two_pin_net_index[location_count]=net_index;
+    //                     location_pattern_index[location_count]=pattern_index;
+    //                     pass_through_demand[location_count]=gridGraph.getViademand_for_mask(layer_index,{pin1_x_index,pin1_y_index});
+    //                     //pass_through_demand[location_count]=1;
+    //                     location_count++;
+
+                        
+    //                 }
+                    
+    //                 //第二段，由one_step_layerindex决定是先横着走还是先竖着走
+    //                 //若是要横向走
+    //                 if(one_step_layerindex%2==0){
+    //                     for(int x_index=min(pin1_x_index,pin2_x_index); x_index<max(pin1_x_index,pin2_x_index); x_index++){
+    //                         location_layer_index[location_count]=one_step_layerindex;
+    //                         location_x_index[location_count]=x_index;
+    //                         location_y_index[location_count]=pin1_y_index;
+    //                         location_two_pin_net_index[location_count]=net_index;
+    //                         location_pattern_index[location_count]=pattern_index;
+    //                         //pass_through_demand[location_count]=gridGraph.getWiredemand_for_mask(first_step_layerindex,{x_index,pin1_y_index});
+    //                         pass_through_demand[location_count]=1;
+    //                         location_count++;
+
+    //                         // wirelength_of_all_two_pin_net[net_index*pattern_num]+=gridGraph.getEdgeLength(one_step_layerindex%2,x_index);
+    //                         // wirelength_of_all_two_pin_net[net_index*pattern_num+1]+=gridGraph.getEdgeLength(one_step_layerindex%2,x_index);
+    //                     }
+    //                 }
+    //                 //否则是要纵向走
+    //                 else {
+    //                     for(int y_index=min(pin2_y_index,pin1_y_index); y_index<max(pin2_y_index,pin1_y_index); y_index++){
+    //                         location_layer_index[location_count]=one_step_layerindex;
+    //                         location_x_index[location_count]=pin2_x_index;
+    //                         location_y_index[location_count]=y_index;
+    //                         location_two_pin_net_index[location_count]=net_index;
+    //                         location_pattern_index[location_count]=pattern_index;
+    //                         //pass_through_demand[location_count]=gridGraph.getWiredemand_for_mask(second_step_layerindex,{pin2_x_index,y_index});
+    //                         pass_through_demand[location_count]=1;
+    //                         location_count++;
+
+    //                         // wirelength_of_all_two_pin_net[net_index*pattern_num]+=gridGraph.getEdgeLength(one_step_layerindex%2,y_index);
+    //                         // wirelength_of_all_two_pin_net[net_index*pattern_num+1]+=gridGraph.getEdgeLength(one_step_layerindex%2,y_index);
+    //                     }
+    //                 }
+
+
+    //                 //最后还是原地穿孔
+    //                 for(int layer_index=min(pin2_layer_index,one_step_layerindex);layer_index<max(pin2_layer_index,one_step_layerindex);layer_index++){
+    //                     //lowerLoc
+    //                     location_layer_index[location_count]=layer_index;
+    //                     location_x_index[location_count]=pin2_x_index>0?pin2_x_index-1:0;//因为只有两层，所以穿孔的较低层一定是在第0层的。如果后续改成了3D形式的，那这里一定需要变化。并且要注意这里的坐标如果本来是0的话，经过-1就小于0了，会导致cuda报错（这个害惨我了，找了老长时间）
+    //                     location_y_index[location_count]=pin2_y_index;
+    //                     location_two_pin_net_index[location_count]=net_index;
+    //                     location_pattern_index[location_count]=pattern_index;
+    //                     pass_through_demand[location_count]=gridGraph.getViademand_for_mask(layer_index,{pin2_x_index,pin2_y_index});
+    //                     //pass_through_demand[location_count]=1;
+    //                     location_count++;
+
+    //                     //Loc
+    //                     location_layer_index[location_count]=layer_index;
+    //                     location_x_index[location_count]=pin2_x_index;
+    //                     location_y_index[location_count]=pin2_y_index;
+    //                     location_two_pin_net_index[location_count]=net_index;
+    //                     location_pattern_index[location_count]=pattern_index;
+    //                     pass_through_demand[location_count]=gridGraph.getViademand_for_mask(layer_index,{pin2_x_index,pin2_y_index});
+    //                     //pass_through_demand[location_count]=1;
+    //                     location_count++;
+    //                 }
+    //             }
+    //         }
+    //         else{//twopinnet是斜线
+    //             for(int pattern_index=0; pattern_index<Patterns.size(); pattern_index++){
+    //                 int first_step_layerindex=Patterns[pattern_index][0];
+    //                 int second_step_layerindex=Patterns[pattern_index][1];
+
+    //                 //第一段原地穿孔
+    //                 for(int layer_index=min(pin1_layer_index,first_step_layerindex); layer_index<max(pin1_layer_index,first_step_layerindex); layer_index++){
+    //                     //lowerLoc
+    //                     location_layer_index[location_count]=layer_index;
+    //                     location_x_index[location_count]=pin1_x_index>0?pin1_x_index-1:0;//因为只有两层，所以穿孔的较低层一定是在第0层的。如果后续改成了3D形式的，那这里一定需要变化。并且要注意这里的坐标如果本来是0的话，经过-1就小于0了，会导致cuda报错（这个害惨我了，找了老长时间）
+    //                     location_y_index[location_count]=pin1_y_index;
+    //                     location_two_pin_net_index[location_count]=net_index;
+    //                     location_pattern_index[location_count]=pattern_index;
+    //                     pass_through_demand[location_count]=gridGraph.getViademand_for_mask(layer_index,{pin1_x_index,pin1_y_index});
+    //                     //pass_through_demand[location_count]=1;
+    //                     location_count++;
+
+    //                     //Loc
+    //                     location_layer_index[location_count]=layer_index;
+    //                     location_x_index[location_count]=pin1_x_index;
+    //                     location_y_index[location_count]=pin1_y_index;
+    //                     location_two_pin_net_index[location_count]=net_index;
+    //                     location_pattern_index[location_count]=pattern_index;
+    //                     pass_through_demand[location_count]=gridGraph.getViademand_for_mask(layer_index,{pin1_x_index,pin1_y_index});
+    //                     //pass_through_demand[location_count]=1;
+    //                     location_count++;
+    //                 //     location_layer_index.push_back(layer_index);
+    //                 //     location_x_index.push_back(pin1_x_index);
+    //                 //     location_y_index.push_back(pin1_y_index);
+    //                 //     location_two_pin_net_index.push_back(net_index);
+    //                 //     location_pattern_index.push_back(pattern_index);
+    //                 }
+    //                 //第二段，由first_layer_index决定是先横着走还是先竖着走
+    //                 if(first_step_layerindex%2==0){//第一段是横向走线，说明要横向走，那么pattern的拐点在（x2，y1）
+    //                     for(int x_index=min(pin1_x_index,pin2_x_index); x_index<max(pin1_x_index,pin2_x_index); x_index++){
+    //                         location_layer_index[location_count]=first_step_layerindex;
+    //                         location_x_index[location_count]=x_index;
+    //                         location_y_index[location_count]=pin1_y_index;
+    //                         location_two_pin_net_index[location_count]=net_index;
+    //                         location_pattern_index[location_count]=pattern_index;
+    //                         //pass_through_demand[location_count]=gridGraph.getWiredemand_for_mask(first_step_layerindex,{x_index,pin1_y_index});
+    //                         pass_through_demand[location_count]=1;
+    //                         location_count++;
+
+    //                         // wirelength_of_all_two_pin_net[net_index*pattern_num+pattern_index]+=gridGraph.getEdgeLength(first_step_layerindex,x_index);
+    //                     }
+    //                     for(int layer_index=min(first_step_layerindex,second_step_layerindex); layer_index<max(first_step_layerindex,second_step_layerindex); layer_index++){
+    //                         //lowerLoc
+    //                         location_layer_index[location_count]=layer_index;
+    //                         location_x_index[location_count]=pin2_x_index>0?pin2_x_index-1:0;//因为只有两层，所以穿孔的较低层一定是在第0层的。如果后续改成了3D形式的，那这里一定需要变化。并且要注意这里的坐标如果本来是0的话，经过-1就小于0了，会导致cuda报错（这个害惨我了，找了老长时间）
+    //                         location_y_index[location_count]=pin1_y_index;
+    //                         location_two_pin_net_index[location_count]=net_index;
+    //                         location_pattern_index[location_count]=pattern_index;
+    //                         pass_through_demand[location_count]=gridGraph.getViademand_for_mask(layer_index,{pin2_x_index,pin1_y_index});
+    //                         //pass_through_demand[location_count]=1;
+    //                         location_count++;
+
+    //                         //Loc
+    //                         location_layer_index[location_count]=layer_index;
+    //                         location_x_index[location_count]=pin2_x_index;
+    //                         location_y_index[location_count]=pin1_y_index;
+    //                         location_two_pin_net_index[location_count]=net_index;
+    //                         location_pattern_index[location_count]=pattern_index;
+    //                         pass_through_demand[location_count]=gridGraph.getViademand_for_mask(layer_index,{pin2_x_index,pin1_y_index});
+    //                         //pass_through_demand[location_count]=1;
+    //                         location_count++;
+
+    //                         turning_points_count_of_all_two_pin_net[net_index*pattern_num+pattern_index]=1;
+    //                     }
+    //                     // for(int layer_index=min(first_step_layerindex,second_step_layerindex); layer_index<=max(first_step_layerindex,second_step_layerindex); layer_index++){
+    //                     //     location_layer_index.push_back(layer_index);
+    //                     //     location_x_index.push_back(pin2_x_index);
+    //                     //     location_y_index.push_back(pin1_y_index);
+    //                     //     location_two_pin_net_index.push_back(net_index);
+    //                     //     location_pattern_index.push_back(pattern_index);
+    //                     // }
+    //                     for(int y_index=min(pin2_y_index,pin1_y_index); y_index<max(pin2_y_index,pin1_y_index); y_index++){
+    //                         location_layer_index[location_count]=second_step_layerindex;
+    //                         location_x_index[location_count]=pin2_x_index;
+    //                         location_y_index[location_count]=y_index;
+    //                         location_two_pin_net_index[location_count]=net_index;
+    //                         location_pattern_index[location_count]=pattern_index;
+    //                         //pass_through_demand[location_count]=gridGraph.getWiredemand_for_mask(second_step_layerindex,{pin2_x_index,y_index});
+    //                         pass_through_demand[location_count]=1;
+    //                         location_count++;
+
+    //                         // wirelength_of_all_two_pin_net[net_index*pattern_num+pattern_index]+=gridGraph.getEdgeLength(second_step_layerindex,y_index);
+    //                     }
+    //                 }
+    //                 else{//如果第一步是在奇数层布线，说明要先竖向走线，pattern的拐点在（x1，y2）
+    //                     for(int y_index=min(pin2_y_index,pin1_y_index); y_index<max(pin2_y_index,pin1_y_index); y_index++){
+    //                         location_layer_index[location_count]=first_step_layerindex;
+    //                         location_x_index[location_count]=pin1_x_index;
+    //                         location_y_index[location_count]=y_index;
+    //                         location_two_pin_net_index[location_count]=net_index;
+    //                         location_pattern_index[location_count]=pattern_index;
+    //                         //pass_through_demand[location_count]=gridGraph.getWiredemand_for_mask(first_step_layerindex,{pin1_x_index,y_index});
+    //                         pass_through_demand[location_count]=1;
+    //                         location_count++;
+
+    //                         // wirelength_of_all_two_pin_net[net_index*pattern_num+pattern_index]+=gridGraph.getEdgeLength(first_step_layerindex,y_index);
+    //                     }
+    //                     for(int layer_index=min(first_step_layerindex,second_step_layerindex); layer_index<max(first_step_layerindex,second_step_layerindex); layer_index++){
+    //                         //lowerLoc
+    //                         location_layer_index[location_count]=layer_index;
+    //                         location_x_index[location_count]=pin1_x_index>0?pin1_x_index-1:0;
+    //                         location_y_index[location_count]=pin2_y_index;
+    //                         location_two_pin_net_index[location_count]=net_index;
+    //                         location_pattern_index[location_count]=pattern_index;
+    //                         pass_through_demand[location_count]=gridGraph.getViademand_for_mask(layer_index,{pin1_x_index,pin2_y_index});
+    //                         //pass_through_demand[location_count]=1;
+    //                         location_count++;
+
+    //                         //Loc
+    //                         location_layer_index[location_count]=layer_index;
+    //                         location_x_index[location_count]=pin1_x_index;
+    //                         location_y_index[location_count]=pin2_y_index;
+    //                         location_two_pin_net_index[location_count]=net_index;
+    //                         location_pattern_index[location_count]=pattern_index;
+    //                         pass_through_demand[location_count]=gridGraph.getViademand_for_mask(layer_index,{pin1_x_index,pin2_y_index});
+    //                         //pass_through_demand[location_count]=1;
+    //                         location_count++;
+
+    //                         turning_points_count_of_all_two_pin_net[net_index*pattern_num+pattern_index]=1;
+    //                     }
+    //                     // for(int layer_index=min(first_step_layerindex,second_step_layerindex); layer_index<=max(first_step_layerindex,second_step_layerindex); layer_index++){
+    //                     //     location_layer_index.push_back(layer_index);
+    //                     //     location_x_index.push_back(pin1_x_index);
+    //                     //     location_y_index.push_back(pin2_y_index);
+    //                     //     location_two_pin_net_index.push_back(net_index);
+    //                     //     location_pattern_index.push_back(pattern_index);
+    //                     // }
+    //                     for(int x_index=min(pin2_x_index,pin1_x_index); x_index<max(pin2_x_index,pin1_x_index); x_index++){
+    //                         location_layer_index[location_count]=second_step_layerindex;
+    //                         location_x_index[location_count]=x_index;
+    //                         location_y_index[location_count]=pin2_y_index;
+    //                         location_two_pin_net_index[location_count]=net_index;
+    //                         location_pattern_index[location_count]=pattern_index;
+    //                         //pass_through_demand[location_count]=gridGraph.getWiredemand_for_mask(second_step_layerindex,{x_index,pin2_y_index});
+    //                         pass_through_demand[location_count]=1;
+    //                         location_count++;
+
+    //                         // wirelength_of_all_two_pin_net[net_index*pattern_num+pattern_index]+=gridGraph.getEdgeLength(second_step_layerindex,x_index);
+    //                     }
+                            
+    //                 }
+    //                 for(int layer_index=min(pin2_layer_index,second_step_layerindex); layer_index<max(pin2_layer_index,second_step_layerindex); layer_index++){
+    //                     //lowerLoc
+    //                     location_layer_index[location_count]=layer_index;
+    //                     location_x_index[location_count]=pin2_x_index>0?pin2_x_index-1:0;//因为只有两层，所以穿孔的较低层一定是在第0层的。如果后续改成了3D形式的，那这里一定需要变化。并且要注意这里的坐标如果本来是0的话，经过-1就小于0了，会导致cuda报错（这个害惨我了，找了老长时间）
+    //                     location_y_index[location_count]=pin2_y_index;
+    //                     location_two_pin_net_index[location_count]=net_index;
+    //                     location_pattern_index[location_count]=pattern_index;
+    //                     pass_through_demand[location_count]=gridGraph.getViademand_for_mask(layer_index,{pin2_x_index,pin2_y_index});
+    //                     //pass_through_demand[location_count]=1;
+    //                     location_count++;
+
+    //                     //Loc
+    //                     location_layer_index[location_count]=layer_index;
+    //                     location_x_index[location_count]=pin2_x_index;
+    //                     location_y_index[location_count]=pin2_y_index;
+    //                     location_two_pin_net_index[location_count]=net_index;
+    //                     location_pattern_index[location_count]=pattern_index;
+    //                     pass_through_demand[location_count]=gridGraph.getViademand_for_mask(layer_index,{pin2_x_index,pin2_y_index});
+    //                     //pass_through_demand[location_count]=1;
+    //                     location_count++;
+    //                 //     location_layer_index.push_back(layer_index);
+    //                 //     location_x_index.push_back(pin2_x_index);
+    //                 //     location_y_index.push_back(pin2_y_index);
+    //                 //     location_two_pin_net_index.push_back(net_index);
+    //                 //     location_pattern_index.push_back(pattern_index);
+    //                 }
+    //             }
+    //         }
+    //     }
+    //     assert(location_count==location_length);
+    //     // std::cout<<"location_count:"<<location_count<<";location_length:"<<location_length<<std::endl;
+
+    //     vector<int> gridgraph_size={Layer_Num,Gcell_Num_X,Gcell_Num_Y};
+    //     vector<vector<int>> multidimension_space_location_index(gridgraph_size.size(),vector<int>(location_length));
+    //     // multidimension_space_location_index.push_back(location_layer_index);
+    //     // multidimension_space_location_index.push_back(location_x_index);
+    //     // multidimension_space_location_index.push_back(location_y_index);
+    //     multidimension_space_location_index[0]=(location_layer_index);
+    //     multidimension_space_location_index[1]=(location_x_index);
+    //     multidimension_space_location_index[2]=(location_y_index);
+    //     auto space_location_index=compress_multidimensional_index_to_one_dimensional_index(gridgraph_size,multidimension_space_location_index);
+
+        
+    //     vector<int> Parray_size={batch_size,pattern_num};
+    //     vector<vector<int>> multidimension_Parray_location_index(Parray_size.size(),vector<int>(location_length));
+    //     // multidimension_Parray_location_index.push_back(location_two_pin_net_index);
+    //     // multidimension_Parray_location_index.push_back(location_pattern_index);
+    //     multidimension_Parray_location_index[0]=(location_two_pin_net_index);
+    //     multidimension_Parray_location_index[1]=(location_pattern_index);
+    //     auto Parray_location_index=compress_multidimensional_index_to_one_dimensional_index(Parray_size,multidimension_Parray_location_index);
+
+
+        
+    //     torch::Tensor space_location_index_tensor=torch::tensor(space_location_index);//这里数据类型似乎也不能变
+    //     torch::Tensor Parray_location_index_tensor=torch::tensor(Parray_location_index);
+    //     torch::Tensor location_index_tensor=torch::stack({space_location_index_tensor,Parray_location_index_tensor});
+    //     // for(int64_t dim:space_location_index_tensor.sizes()) std::cout<<dim<<" ";
+    //     // for(int64_t dim:Parray_location_index_tensor.sizes()) std::cout<<dim<<" ";
+    //     // for (int64_t dim : location_index_tensor.sizes()) std::cout<<dim<<" ";
+    //     // std::cout<<"thisok"<<std::endl;
+        
+
+
+
+    //     // std::cout<<Parray_location_index_tensor.dtype()<<std::endl;
+    //     // std::cout<<Parray_location_index_tensor[0].dtype()<<std::endl;
+    //     // std::cout<<Parray_location_index_tensor[0]<<std::endl;
+    //     // std::cout<<Parray_location_index_tensor[0].item()<<std::endl;
+    //     // std::cout<<Parray_location_index_tensor[0].item().to<int>()<<std::endl;
+    //     // std::cout<<Parray_location_index_tensor[0].item().to<float>()<<std::endl;
+    //     // //检查一致性：
+    //     // for(int i =0;i<space_location_index.size();i++) if(space_location_index[i]!=space_location_index_tensor[i].item().to<float>()) std::cout<<"have problem"<<std::endl;
+    //     // for(int i =0;i<Parray_location_index.size();i++) if(Parray_location_index[i]!=Parray_location_index_tensor[i].item().to<float>()) std::cout<<"have problem"<<std::endl;
+
+
+    //     torch::Tensor value=torch::tensor(pass_through_demand,torch::kFloat);
+    //     //torch::Tensor value=torch::ones(space_location_index_tensor.size(0));
+    //     // std::cout<<space_location_index_tensor.size(0)<<std::endl;
+    //     // std::cout<<space_location_index_tensor.dtype()<<std::endl;
+    //     // std::cout<<location_index_tensor.dtype()<<std::endl;
+    //     // std::cout<<value.dtype()<<std::endl;
+        
+    //     // std::cout<<location_index_tensor.size(0)<<location_index_tensor.size(1)<<value.size(0)<<std::endl;
+    //     // for (int64_t dim : value.sizes()) std::cout<<dim<<" ";
+    //     // std::cout<<"thisok"<<std::endl;
+    //     //*All_Gcell_Mask = torch::sparse_coo_tensor(location_index_tensor,value,(Layer_Num*Gcell_Num_X*Gcell_Num_Y,edges.size()*Patterns.size()));
+    //     //*All_Gcell_Mask = torch::sparse_coo_tensor(location_index_tensor,value,{Layer_Num*Gcell_Num_X*Gcell_Num_Y,long(edges.size())*Patterns.size()});
+    //     (*All_Gcell_Mask)[batch_index] = torch::sparse_coo_tensor(location_index_tensor, value,{Layer_Num*Gcell_Num_X*Gcell_Num_Y,batch_size*pattern_num}).to(device);//这个地方的类型必须是kFloat，如果是kInt就会有问题
+        
+    //     // *Wirelength_Mask = torch::tensor(wirelength_of_all_two_pin_net).reshape({1,2*two_pin_net_num}).to(device);
+    //     *Viacount_Mask = torch::tensor(turning_points_count_of_all_two_pin_net,torch::kFloat).index({torch::indexing::Slice(batch_index*batch_size*pattern_num,(batch_index+1)*batch_size*pattern_num)}).reshape({1,batch_size*pattern_num}).to(device);
+        
+    // }
+    // // std::cout<<All_Gcell_Mask->dtype()<<std::endl;
+    // // std::cout<<Wirelength_Mask->dtype()<<std::endl;
+    // // std::cout<<Viacount_Mask->dtype()<<std::endl;
+    // //*All_Gcell_Mask = (*All_Gcell_Mask).to(torch::kFloat).to(device);//这个地方的类型必须是kFloat，如果是kInt就会有问题
+    // //for (int64_t dim : *All_Gcell_Mask.sizes()) std::cout<<dim<<" ";
+    // log() << "update mask complete!" << std::endl;
+
+
+	// return;
+
+}
+
+//resize+赋值+兼容了直线布线+产生wirelengthmask以及viacountmask
+void GlobalRouter::create_masks_fixed_agian(int Layer_Num,int Gcell_Num_X, int Gcell_Num_Y,vector<TorchEdge> Two_Pin_net_vector,torch::Tensor *All_Gcell_Mask,torch::Tensor *Wirelength_Mask,torch::Tensor *Viacount_Mask, c10::Device device)//这是针对四维的P矩阵使用的mask
+{
+	auto Patterns=linkBetweenSelectedPatternLayerAndLPatternIndex(Layer_Num);
+    
+    log() << "start updating masks" << std::endl;
+    vector<int> location_layer_index;
+    vector<int> location_x_index;
+    vector<int> location_y_index;
+    // vector<int> location_net_index;
+    // vector<int> location_tree_index;
+    vector<int> location_two_pin_net_index;
+    vector<int> location_pattern_index;
+    vector<float> pass_through_demand;
+
+
+    // vector<float> wirelength_of_all_two_pin_net(2*Two_Pin_net_vector.size(),0);
+    vector<int> turning_points_count_of_all_two_pin_net(2*Two_Pin_net_vector.size(),0);
+
+
+
+    // int net_num=Two_Pin_net_vector.size();
+    // //以下一段可以获取所有net中最大的tree_num和所有tree中最大的twopinnet_num
+    // int Max_tree_num_in_single_net=0;
+    // int Max_twopinnet_num_in_single_tree=0;
+    // for (const auto& net : Two_Pin_net_vector){
+    //     Max_tree_num_in_single_net = std::max(Max_tree_num_in_single_net,static_cast<int>(net.size()));
+    //     for (const auto& tree : net){
+    //         Max_twopinnet_num_in_single_tree = std::max(Max_twopinnet_num_in_single_tree,static_cast<int>(tree.size()));
+    //     }
+    // }
+    int two_pin_net_num=Two_Pin_net_vector.size();
+    int pattern_num=Patterns.size();
+
+    int location_length=0;
+
+    
+    for (int net_index=0; net_index<two_pin_net_num; net_index++){
+        auto pin1_layer_index=Two_Pin_net_vector[net_index].pin1.layer;
+        auto pin1_x_index=Two_Pin_net_vector[net_index].pin1.x;
+        auto pin1_y_index=Two_Pin_net_vector[net_index].pin1.y;
+
+        auto pin2_layer_index=Two_Pin_net_vector[net_index].pin2.layer;
+        auto pin2_x_index=Two_Pin_net_vector[net_index].pin2.x;
+        auto pin2_y_index=Two_Pin_net_vector[net_index].pin2.y;
+        //assert(!((pin1_x_index==pin2_x_index)&&(pin1_y_index==pin2_y_index)));
+        if((pin1_x_index==pin2_x_index)&&(pin1_y_index==pin2_y_index)) std::cout<<"this is not a two pin net"<<std::endl;
+        if((pin1_y_index==pin2_y_index)||(pin1_x_index==pin2_x_index)){//说明是直线走线的net
+            for(int pattern_index=0; pattern_index<Patterns.size(); pattern_index++){
+                int first_step_layerindex=Patterns[pattern_index][0];//在模型中仍然假定其是两步走的，只不过其中的一步走的长度是0
+                int second_step_layerindex=Patterns[pattern_index][1];
+
+                int one_step_layerindex=pin1_y_index==pin2_y_index?
+                                        (first_step_layerindex%2==0?first_step_layerindex:second_step_layerindex)://若是horizonal（说明直线走线只能走偶数层），且firstlayer是偶数，说明这条线直线走到就是这个firstlayer
+                                        (first_step_layerindex%2==1?first_step_layerindex:second_step_layerindex);
+
+                //先是原地穿孔
+                location_length+=max(pin1_layer_index,one_step_layerindex)-min(pin1_layer_index,one_step_layerindex);
+                location_length+=max(pin1_layer_index,one_step_layerindex)-min(pin1_layer_index,one_step_layerindex);
+
+                //第二段，由one_step_layerindex决定是先横着走还是先竖着走
+                //若是要横向走
+                if(one_step_layerindex%2==0)location_length+=max(pin1_x_index,pin2_x_index)-min(pin1_x_index,pin2_x_index);
+                //否则是要纵向走
+                else location_length+=max(pin1_y_index,pin2_y_index)-min(pin1_y_index,pin2_y_index);
+
+
+                //最后还是原地穿孔
+                location_length+=max(pin2_layer_index,one_step_layerindex)-min(pin2_layer_index,one_step_layerindex);
+                location_length+=max(pin2_layer_index,one_step_layerindex)-min(pin2_layer_index,one_step_layerindex);
+            }
+        }
+        else{//斜线情况
+            for(int pattern_index=0; pattern_index<Patterns.size(); pattern_index++){
+                int first_step_layerindex=Patterns[pattern_index][0];
+                
+                int second_step_layerindex=Patterns[pattern_index][1];
+
+                //第一段原地穿孔
+                // for(int layer_index=min(pin1_layer_index,first_step_layerindex); layer_index<=max(pin1_layer_index,first_step_layerindex); layer_index++){
+                //     location_layer_index.push_back(layer_index);
+                //     location_x_index.push_back(pin1_x_index);
+                //     location_y_index.push_back(pin1_y_index);
+                //     location_two_pin_net_index.push_back(net_index);
+                //     location_pattern_index.push_back(pattern_index);
+                // }
+                location_length+=max(pin1_layer_index,first_step_layerindex)-min(pin1_layer_index,first_step_layerindex);
+                location_length+=max(pin1_layer_index,first_step_layerindex)-min(pin1_layer_index,first_step_layerindex);
+                //第二段，由first_layer_index决定是先横着走还是先竖着走
+                if(first_step_layerindex%2==0){//第一段是横向走线，说明要横向走，那么pattern的拐点在（x2，y1）
+                    // for(int x_index=min(pin1_x_index,pin2_x_index); x_index<=max(pin1_x_index,pin2_x_index); x_index++){
+                    //     location_layer_index.emplace_back(first_step_layerindex);
+                    //     location_x_index.emplace_back(x_index);
+                    //     location_y_index.emplace_back(pin1_y_index);
+                    //     location_two_pin_net_index.emplace_back(net_index);
+                    //     location_pattern_index.emplace_back(pattern_index);
+                    // }
+                    location_length+=max(pin1_x_index,pin2_x_index)-min(pin1_x_index,pin2_x_index);
+                    
+                    // for(int layer_index=min(first_step_layerindex,second_step_layerindex); layer_index<=max(first_step_layerindex,second_step_layerindex); layer_index++){
+                    //     location_layer_index.push_back(layer_index);
+                    //     location_x_index.push_back(pin2_x_index);
+                    //     location_y_index.push_back(pin1_y_index);
+                    //     location_two_pin_net_index.push_back(net_index);
+                    //     location_pattern_index.push_back(pattern_index);
+                    // }
+                    location_length+=max(first_step_layerindex,second_step_layerindex)-min(first_step_layerindex,second_step_layerindex);
+                    location_length+=max(first_step_layerindex,second_step_layerindex)-min(first_step_layerindex,second_step_layerindex);
+
+                    // for(int y_index=min(pin2_y_index,pin1_y_index); y_index<=max(pin2_y_index,pin1_y_index); y_index++){
+                    //     location_layer_index.emplace_back(second_step_layerindex);
+                    //     location_x_index.emplace_back(pin2_x_index);
+                    //     location_y_index.emplace_back(y_index);
+                    //     location_two_pin_net_index.emplace_back(net_index);
+                    //     location_pattern_index.emplace_back(pattern_index);
+                    // }
+                    location_length+=max(pin2_y_index,pin1_y_index)-min(pin2_y_index,pin1_y_index);
+                }
+                else{//如果第一步是在奇数层布线，说明要先竖向走线，pattern的拐点在（x1，y2）
+                    // for(int y_index=min(pin2_y_index,pin1_y_index); y_index<=max(pin2_y_index,pin1_y_index); y_index++){
+                    //     location_layer_index.emplace_back(first_step_layerindex);
+                    //     location_x_index.emplace_back(pin1_x_index);
+                    //     location_y_index.emplace_back(y_index);
+                    //     location_two_pin_net_index.emplace_back(net_index);
+                    //     location_pattern_index.emplace_back(pattern_index);
+                    // }
+                    location_length+=max(pin1_y_index,pin2_y_index)-min(pin1_y_index,pin2_y_index);
+                    
+                    // for(int layer_index=min(first_step_layerindex,second_step_layerindex); layer_index<=max(first_step_layerindex,second_step_layerindex); layer_index++){
+                    //     location_layer_index.push_back(layer_index);
+                    //     location_x_index.push_back(pin1_x_index);
+                    //     location_y_index.push_back(pin2_y_index);
+                    //     location_two_pin_net_index.push_back(net_index);
+                    //     location_pattern_index.push_back(pattern_index);
+                    // }
+                    location_length+=max(first_step_layerindex,second_step_layerindex)-min(first_step_layerindex,second_step_layerindex);
+                    location_length+=max(first_step_layerindex,second_step_layerindex)-min(first_step_layerindex,second_step_layerindex);
+                    // for(int x_index=min(pin2_x_index,pin1_x_index); x_index<=max(pin2_x_index,pin1_x_index); x_index++){
+                    //     location_layer_index.emplace_back(second_step_layerindex);
+                    //     location_x_index.emplace_back(x_index);
+                    //     location_y_index.emplace_back(pin2_y_index);
+                    //     location_two_pin_net_index.emplace_back(net_index);
+                    //     location_pattern_index.emplace_back(pattern_index);
+                    // }
+                    location_length+=max(pin2_x_index,pin1_x_index)-min(pin2_x_index,pin1_x_index);
+                        
+                }
+                // for(int layer_index=min(pin2_layer_index,second_step_layerindex); layer_index<=max(pin2_layer_index,second_step_layerindex); layer_index++){
+                //     location_layer_index.push_back(layer_index);
+                //     location_x_index.push_back(pin2_x_index);
+                //     location_y_index.push_back(pin2_y_index);
+                //     location_two_pin_net_index.push_back(net_index);
+                //     location_pattern_index.push_back(pattern_index);
+                // }
+                location_length+=max(pin2_layer_index,second_step_layerindex)-min(pin2_layer_index,second_step_layerindex);
+                location_length+=max(pin2_layer_index,second_step_layerindex)-min(pin2_layer_index,second_step_layerindex);
+            }
+        }
+    }
+
+    location_layer_index.resize(location_length);
+    location_x_index.resize(location_length);
+    location_y_index.resize(location_length);
+    //location_net_index.resize(location_length);
+    //location_tree_index.resize(location_length);
+    location_two_pin_net_index.resize(location_length);
+    location_pattern_index.resize(location_length);
+    pass_through_demand.resize(location_length);
+    int location_count = 0;
+
+
+    for (int net_index=0; net_index<two_pin_net_num; net_index++){
+        auto pin1_layer_index=Two_Pin_net_vector[net_index].pin1.layer;
+        auto pin1_x_index=Two_Pin_net_vector[net_index].pin1.x;
+        auto pin1_y_index=Two_Pin_net_vector[net_index].pin1.y;
+
+        auto pin2_layer_index=Two_Pin_net_vector[net_index].pin2.layer;
+        auto pin2_x_index=Two_Pin_net_vector[net_index].pin2.x;
+        auto pin2_y_index=Two_Pin_net_vector[net_index].pin2.y;
+        if ((pin1_y_index==pin2_y_index)||(pin1_x_index==pin2_x_index)){//说明是直线走线的net
+            for(int pattern_index=0; pattern_index<Patterns.size(); pattern_index++){
+                int first_step_layerindex=Patterns[pattern_index][0];//在模型中仍然假定其是两步走的，只不过其中的一步走的长度是0
+                int second_step_layerindex=Patterns[pattern_index][1];
+
+                int one_step_layerindex=pin1_y_index==pin2_y_index?
+                                        (first_step_layerindex%2==0?first_step_layerindex:second_step_layerindex)://若是horizonal（说明直线走线只能走偶数层），且firstlayer是偶数，说明这条线直线走到就是这个firstlayer
+                                        (first_step_layerindex%2==1?first_step_layerindex:second_step_layerindex);
+
+                //先是原地穿孔
+                for(int layer_index=min(pin1_layer_index,one_step_layerindex);layer_index<max(pin1_layer_index,one_step_layerindex);layer_index++){
+                    //lowerLoc
+                    location_layer_index[location_count]=layer_index;
+                    location_x_index[location_count]=pin1_x_index>0?pin1_x_index-1:0;//因为只有两层，所以穿孔的较低层一定是在第0层的。如果后续改成了3D形式的，那这里一定需要变化。并且要注意这里的坐标如果本来是0的话，经过-1就小于0了，会导致cuda报错（这个害惨我了，找了老长时间）
+                    location_y_index[location_count]=pin1_y_index;
+                    location_two_pin_net_index[location_count]=net_index;
+                    location_pattern_index[location_count]=pattern_index;
+                    pass_through_demand[location_count]=gridGraph.getViademand_for_mask(layer_index,{pin1_x_index,pin1_y_index});
+                    //pass_through_demand[location_count]=1;
+                    location_count++;
+
+                    //Loc
+                    location_layer_index[location_count]=layer_index;
+                    location_x_index[location_count]=pin1_x_index;
+                    location_y_index[location_count]=pin1_y_index;
+                    location_two_pin_net_index[location_count]=net_index;
+                    location_pattern_index[location_count]=pattern_index;
+                    pass_through_demand[location_count]=gridGraph.getViademand_for_mask(layer_index,{pin1_x_index,pin1_y_index});
+                    //pass_through_demand[location_count]=1;
+                    location_count++;
+
+                    
+                }
+                
+                //第二段，由one_step_layerindex决定是先横着走还是先竖着走
+                //若是要横向走
+                if(one_step_layerindex%2==0){
+                    for(int x_index=min(pin1_x_index,pin2_x_index); x_index<max(pin1_x_index,pin2_x_index); x_index++){
+                        location_layer_index[location_count]=one_step_layerindex;
+                        location_x_index[location_count]=x_index;
+                        location_y_index[location_count]=pin1_y_index;
+                        location_two_pin_net_index[location_count]=net_index;
+                        location_pattern_index[location_count]=pattern_index;
+                        //pass_through_demand[location_count]=gridGraph.getWiredemand_for_mask(first_step_layerindex,{x_index,pin1_y_index});
+                        pass_through_demand[location_count]=1;
+                        location_count++;
+
+                        // wirelength_of_all_two_pin_net[net_index*pattern_num]+=gridGraph.getEdgeLength(one_step_layerindex%2,x_index);
+                        // wirelength_of_all_two_pin_net[net_index*pattern_num+1]+=gridGraph.getEdgeLength(one_step_layerindex%2,x_index);
+                    }
+                }
+                //否则是要纵向走
+                else {
+                    for(int y_index=min(pin2_y_index,pin1_y_index); y_index<max(pin2_y_index,pin1_y_index); y_index++){
+                        location_layer_index[location_count]=one_step_layerindex;
+                        location_x_index[location_count]=pin2_x_index;
+                        location_y_index[location_count]=y_index;
+                        location_two_pin_net_index[location_count]=net_index;
+                        location_pattern_index[location_count]=pattern_index;
+                        //pass_through_demand[location_count]=gridGraph.getWiredemand_for_mask(second_step_layerindex,{pin2_x_index,y_index});
+                        pass_through_demand[location_count]=1;
+                        location_count++;
+
+                        // wirelength_of_all_two_pin_net[net_index*pattern_num]+=gridGraph.getEdgeLength(one_step_layerindex%2,y_index);
+                        // wirelength_of_all_two_pin_net[net_index*pattern_num+1]+=gridGraph.getEdgeLength(one_step_layerindex%2,y_index);
+                    }
+                }
+
+
+                //最后还是原地穿孔
+                for(int layer_index=min(pin2_layer_index,one_step_layerindex);layer_index<max(pin2_layer_index,one_step_layerindex);layer_index++){
+                    //lowerLoc
+                    location_layer_index[location_count]=layer_index;
+                    location_x_index[location_count]=pin2_x_index>0?pin2_x_index-1:0;//因为只有两层，所以穿孔的较低层一定是在第0层的。如果后续改成了3D形式的，那这里一定需要变化。并且要注意这里的坐标如果本来是0的话，经过-1就小于0了，会导致cuda报错（这个害惨我了，找了老长时间）
+                    location_y_index[location_count]=pin2_y_index;
+                    location_two_pin_net_index[location_count]=net_index;
+                    location_pattern_index[location_count]=pattern_index;
+                    pass_through_demand[location_count]=gridGraph.getViademand_for_mask(layer_index,{pin2_x_index,pin2_y_index});
+                    //pass_through_demand[location_count]=1;
+                    location_count++;
+
+                    //Loc
+                    location_layer_index[location_count]=layer_index;
+                    location_x_index[location_count]=pin2_x_index;
+                    location_y_index[location_count]=pin2_y_index;
+                    location_two_pin_net_index[location_count]=net_index;
+                    location_pattern_index[location_count]=pattern_index;
+                    pass_through_demand[location_count]=gridGraph.getViademand_for_mask(layer_index,{pin2_x_index,pin2_y_index});
+                    //pass_through_demand[location_count]=1;
+                    location_count++;
+                }
+            }
+        }
+        else{//twopinnet是斜线
+            for(int pattern_index=0; pattern_index<Patterns.size(); pattern_index++){
+                int first_step_layerindex=Patterns[pattern_index][0];
+                int second_step_layerindex=Patterns[pattern_index][1];
+
+                //第一段原地穿孔
+                for(int layer_index=min(pin1_layer_index,first_step_layerindex); layer_index<max(pin1_layer_index,first_step_layerindex); layer_index++){
+                    //lowerLoc
+                    location_layer_index[location_count]=layer_index;
+                    location_x_index[location_count]=pin1_x_index>0?pin1_x_index-1:0;//因为只有两层，所以穿孔的较低层一定是在第0层的。如果后续改成了3D形式的，那这里一定需要变化。并且要注意这里的坐标如果本来是0的话，经过-1就小于0了，会导致cuda报错（这个害惨我了，找了老长时间）
+                    location_y_index[location_count]=pin1_y_index;
+                    location_two_pin_net_index[location_count]=net_index;
+                    location_pattern_index[location_count]=pattern_index;
+                    pass_through_demand[location_count]=gridGraph.getViademand_for_mask(layer_index,{pin1_x_index,pin1_y_index});
+                    //pass_through_demand[location_count]=1;
+                    location_count++;
+
+                    //Loc
+                    location_layer_index[location_count]=layer_index;
+                    location_x_index[location_count]=pin1_x_index;
+                    location_y_index[location_count]=pin1_y_index;
+                    location_two_pin_net_index[location_count]=net_index;
+                    location_pattern_index[location_count]=pattern_index;
+                    pass_through_demand[location_count]=gridGraph.getViademand_for_mask(layer_index,{pin1_x_index,pin1_y_index});
+                    //pass_through_demand[location_count]=1;
+                    location_count++;
+                //     location_layer_index.push_back(layer_index);
+                //     location_x_index.push_back(pin1_x_index);
+                //     location_y_index.push_back(pin1_y_index);
+                //     location_two_pin_net_index.push_back(net_index);
+                //     location_pattern_index.push_back(pattern_index);
+                }
+                //第二段，由first_layer_index决定是先横着走还是先竖着走
+                if(first_step_layerindex%2==0){//第一段是横向走线，说明要横向走，那么pattern的拐点在（x2，y1）
+                    for(int x_index=min(pin1_x_index,pin2_x_index); x_index<max(pin1_x_index,pin2_x_index); x_index++){
+                        location_layer_index[location_count]=first_step_layerindex;
+                        location_x_index[location_count]=x_index;
+                        location_y_index[location_count]=pin1_y_index;
+                        location_two_pin_net_index[location_count]=net_index;
+                        location_pattern_index[location_count]=pattern_index;
+                        //pass_through_demand[location_count]=gridGraph.getWiredemand_for_mask(first_step_layerindex,{x_index,pin1_y_index});
+                        pass_through_demand[location_count]=1;
+                        location_count++;
+
+                        // wirelength_of_all_two_pin_net[net_index*pattern_num+pattern_index]+=gridGraph.getEdgeLength(first_step_layerindex,x_index);
+                    }
+                    for(int layer_index=min(first_step_layerindex,second_step_layerindex); layer_index<max(first_step_layerindex,second_step_layerindex); layer_index++){
+                        //lowerLoc
+                        location_layer_index[location_count]=layer_index;
+                        location_x_index[location_count]=pin2_x_index>0?pin2_x_index-1:0;//因为只有两层，所以穿孔的较低层一定是在第0层的。如果后续改成了3D形式的，那这里一定需要变化。并且要注意这里的坐标如果本来是0的话，经过-1就小于0了，会导致cuda报错（这个害惨我了，找了老长时间）
+                        location_y_index[location_count]=pin1_y_index;
+                        location_two_pin_net_index[location_count]=net_index;
+                        location_pattern_index[location_count]=pattern_index;
+                        pass_through_demand[location_count]=gridGraph.getViademand_for_mask(layer_index,{pin2_x_index,pin1_y_index});
+                        //pass_through_demand[location_count]=1;
+                        location_count++;
+
+                        //Loc
+                        location_layer_index[location_count]=layer_index;
+                        location_x_index[location_count]=pin2_x_index;
+                        location_y_index[location_count]=pin1_y_index;
+                        location_two_pin_net_index[location_count]=net_index;
+                        location_pattern_index[location_count]=pattern_index;
+                        pass_through_demand[location_count]=gridGraph.getViademand_for_mask(layer_index,{pin2_x_index,pin1_y_index});
+                        //pass_through_demand[location_count]=1;
+                        location_count++;
+
+                        turning_points_count_of_all_two_pin_net[net_index*pattern_num+pattern_index]=1;
+                    }
+                    // for(int layer_index=min(first_step_layerindex,second_step_layerindex); layer_index<=max(first_step_layerindex,second_step_layerindex); layer_index++){
+                    //     location_layer_index.push_back(layer_index);
+                    //     location_x_index.push_back(pin2_x_index);
+                    //     location_y_index.push_back(pin1_y_index);
+                    //     location_two_pin_net_index.push_back(net_index);
+                    //     location_pattern_index.push_back(pattern_index);
+                    // }
+                    for(int y_index=min(pin2_y_index,pin1_y_index); y_index<max(pin2_y_index,pin1_y_index); y_index++){
+                        location_layer_index[location_count]=second_step_layerindex;
+                        location_x_index[location_count]=pin2_x_index;
+                        location_y_index[location_count]=y_index;
+                        location_two_pin_net_index[location_count]=net_index;
+                        location_pattern_index[location_count]=pattern_index;
+                        //pass_through_demand[location_count]=gridGraph.getWiredemand_for_mask(second_step_layerindex,{pin2_x_index,y_index});
+                        pass_through_demand[location_count]=1;
+                        location_count++;
+
+                        // wirelength_of_all_two_pin_net[net_index*pattern_num+pattern_index]+=gridGraph.getEdgeLength(second_step_layerindex,y_index);
+                    }
+                }
+                else{//如果第一步是在奇数层布线，说明要先竖向走线，pattern的拐点在（x1，y2）
+                    for(int y_index=min(pin2_y_index,pin1_y_index); y_index<max(pin2_y_index,pin1_y_index); y_index++){
+                        location_layer_index[location_count]=first_step_layerindex;
+                        location_x_index[location_count]=pin1_x_index;
+                        location_y_index[location_count]=y_index;
+                        location_two_pin_net_index[location_count]=net_index;
+                        location_pattern_index[location_count]=pattern_index;
+                        //pass_through_demand[location_count]=gridGraph.getWiredemand_for_mask(first_step_layerindex,{pin1_x_index,y_index});
+                        pass_through_demand[location_count]=1;
+                        location_count++;
+
+                        // wirelength_of_all_two_pin_net[net_index*pattern_num+pattern_index]+=gridGraph.getEdgeLength(first_step_layerindex,y_index);
+                    }
+                    for(int layer_index=min(first_step_layerindex,second_step_layerindex); layer_index<max(first_step_layerindex,second_step_layerindex); layer_index++){
+                        //lowerLoc
+                        location_layer_index[location_count]=layer_index;
+                        location_x_index[location_count]=pin1_x_index>0?pin1_x_index-1:0;
+                        location_y_index[location_count]=pin2_y_index;
+                        location_two_pin_net_index[location_count]=net_index;
+                        location_pattern_index[location_count]=pattern_index;
+                        pass_through_demand[location_count]=gridGraph.getViademand_for_mask(layer_index,{pin1_x_index,pin2_y_index});
+                        //pass_through_demand[location_count]=1;
+                        location_count++;
+
+                        //Loc
+                        location_layer_index[location_count]=layer_index;
+                        location_x_index[location_count]=pin1_x_index;
+                        location_y_index[location_count]=pin2_y_index;
+                        location_two_pin_net_index[location_count]=net_index;
+                        location_pattern_index[location_count]=pattern_index;
+                        pass_through_demand[location_count]=gridGraph.getViademand_for_mask(layer_index,{pin1_x_index,pin2_y_index});
+                        //pass_through_demand[location_count]=1;
+                        location_count++;
+
+                        turning_points_count_of_all_two_pin_net[net_index*pattern_num+pattern_index]=1;
+                    }
+                    // for(int layer_index=min(first_step_layerindex,second_step_layerindex); layer_index<=max(first_step_layerindex,second_step_layerindex); layer_index++){
+                    //     location_layer_index.push_back(layer_index);
+                    //     location_x_index.push_back(pin1_x_index);
+                    //     location_y_index.push_back(pin2_y_index);
+                    //     location_two_pin_net_index.push_back(net_index);
+                    //     location_pattern_index.push_back(pattern_index);
+                    // }
+                    for(int x_index=min(pin2_x_index,pin1_x_index); x_index<max(pin2_x_index,pin1_x_index); x_index++){
+                        location_layer_index[location_count]=second_step_layerindex;
+                        location_x_index[location_count]=x_index;
+                        location_y_index[location_count]=pin2_y_index;
+                        location_two_pin_net_index[location_count]=net_index;
+                        location_pattern_index[location_count]=pattern_index;
+                        //pass_through_demand[location_count]=gridGraph.getWiredemand_for_mask(second_step_layerindex,{x_index,pin2_y_index});
+                        pass_through_demand[location_count]=1;
+                        location_count++;
+
+                        // wirelength_of_all_two_pin_net[net_index*pattern_num+pattern_index]+=gridGraph.getEdgeLength(second_step_layerindex,x_index);
+                    }
+                        
+                }
+                for(int layer_index=min(pin2_layer_index,second_step_layerindex); layer_index<max(pin2_layer_index,second_step_layerindex); layer_index++){
+                    //lowerLoc
+                    location_layer_index[location_count]=layer_index;
+                    location_x_index[location_count]=pin2_x_index>0?pin2_x_index-1:0;//因为只有两层，所以穿孔的较低层一定是在第0层的。如果后续改成了3D形式的，那这里一定需要变化。并且要注意这里的坐标如果本来是0的话，经过-1就小于0了，会导致cuda报错（这个害惨我了，找了老长时间）
+                    location_y_index[location_count]=pin2_y_index;
+                    location_two_pin_net_index[location_count]=net_index;
+                    location_pattern_index[location_count]=pattern_index;
+                    pass_through_demand[location_count]=gridGraph.getViademand_for_mask(layer_index,{pin2_x_index,pin2_y_index});
+                    //pass_through_demand[location_count]=1;
+                    location_count++;
+
+                    //Loc
+                    location_layer_index[location_count]=layer_index;
+                    location_x_index[location_count]=pin2_x_index;
+                    location_y_index[location_count]=pin2_y_index;
+                    location_two_pin_net_index[location_count]=net_index;
+                    location_pattern_index[location_count]=pattern_index;
+                    pass_through_demand[location_count]=gridGraph.getViademand_for_mask(layer_index,{pin2_x_index,pin2_y_index});
+                    //pass_through_demand[location_count]=1;
+                    location_count++;
+                //     location_layer_index.push_back(layer_index);
+                //     location_x_index.push_back(pin2_x_index);
+                //     location_y_index.push_back(pin2_y_index);
+                //     location_two_pin_net_index.push_back(net_index);
+                //     location_pattern_index.push_back(pattern_index);
+                }
+            }
+        }
+    }
+    assert(location_count==location_length);
+    std::cout<<"location_count:"<<location_count<<";location_length:"<<location_length<<std::endl;
+
+    vector<int> gridgraph_size={Layer_Num,Gcell_Num_X,Gcell_Num_Y};
+    vector<vector<int>> multidimension_space_location_index(gridgraph_size.size(),vector<int>(location_length));
+    // multidimension_space_location_index.push_back(location_layer_index);
+    // multidimension_space_location_index.push_back(location_x_index);
+    // multidimension_space_location_index.push_back(location_y_index);
+    multidimension_space_location_index[0]=(location_layer_index);
+    multidimension_space_location_index[1]=(location_x_index);
+    multidimension_space_location_index[2]=(location_y_index);
+    auto space_location_index=compress_multidimensional_index_to_one_dimensional_index(gridgraph_size,multidimension_space_location_index);
+
+    
+    vector<int> Parray_size={two_pin_net_num,pattern_num};
+    vector<vector<int>> multidimension_Parray_location_index(Parray_size.size(),vector<int>(location_length));
+    // multidimension_Parray_location_index.push_back(location_two_pin_net_index);
+    // multidimension_Parray_location_index.push_back(location_pattern_index);
+    multidimension_Parray_location_index[0]=(location_two_pin_net_index);
+    multidimension_Parray_location_index[1]=(location_pattern_index);
+    auto Parray_location_index=compress_multidimensional_index_to_one_dimensional_index(Parray_size,multidimension_Parray_location_index);
+
+
+    
+    torch::Tensor space_location_index_tensor=torch::tensor(space_location_index);//这里数据类型似乎也不能变
+    torch::Tensor Parray_location_index_tensor=torch::tensor(Parray_location_index);
+    torch::Tensor location_index_tensor=torch::stack({space_location_index_tensor,Parray_location_index_tensor});
+    // for(int64_t dim:space_location_index_tensor.sizes()) std::cout<<dim<<" ";
+    // for(int64_t dim:Parray_location_index_tensor.sizes()) std::cout<<dim<<" ";
+    // for (int64_t dim : location_index_tensor.sizes()) std::cout<<dim<<" ";
+    // std::cout<<"thisok"<<std::endl;
+    
+
+
+
+    // std::cout<<Parray_location_index_tensor.dtype()<<std::endl;
+    // std::cout<<Parray_location_index_tensor[0].dtype()<<std::endl;
+    // std::cout<<Parray_location_index_tensor[0]<<std::endl;
+    // std::cout<<Parray_location_index_tensor[0].item()<<std::endl;
+    // std::cout<<Parray_location_index_tensor[0].item().to<int>()<<std::endl;
+    // std::cout<<Parray_location_index_tensor[0].item().to<float>()<<std::endl;
+    // //检查一致性：
+    // for(int i =0;i<space_location_index.size();i++) if(space_location_index[i]!=space_location_index_tensor[i].item().to<float>()) std::cout<<"have problem"<<std::endl;
+    // for(int i =0;i<Parray_location_index.size();i++) if(Parray_location_index[i]!=Parray_location_index_tensor[i].item().to<float>()) std::cout<<"have problem"<<std::endl;
+
+
+    torch::Tensor value=torch::tensor(pass_through_demand,torch::kFloat);
+    //torch::Tensor value=torch::ones(space_location_index_tensor.size(0));
+    std::cout<<space_location_index_tensor.size(0)<<std::endl;
+    std::cout<<space_location_index_tensor.dtype()<<std::endl;
+    std::cout<<location_index_tensor.dtype()<<std::endl;
+    std::cout<<value.dtype()<<std::endl;
+    
+    // std::cout<<location_index_tensor.size(0)<<location_index_tensor.size(1)<<value.size(0)<<std::endl;
+    // for (int64_t dim : value.sizes()) std::cout<<dim<<" ";
+    // std::cout<<"thisok"<<std::endl;
+    //*All_Gcell_Mask = torch::sparse_coo_tensor(location_index_tensor,value,(Layer_Num*Gcell_Num_X*Gcell_Num_Y,edges.size()*Patterns.size()));
+    //*All_Gcell_Mask = torch::sparse_coo_tensor(location_index_tensor,value,{Layer_Num*Gcell_Num_X*Gcell_Num_Y,long(edges.size())*Patterns.size()});
+    *All_Gcell_Mask = torch::sparse_coo_tensor(location_index_tensor, value,{Layer_Num*Gcell_Num_X*Gcell_Num_Y,two_pin_net_num*pattern_num}).to(device);//这个地方的类型必须是kFloat，如果是kInt就会有问题
+    
+    // *Wirelength_Mask = torch::tensor(wirelength_of_all_two_pin_net).reshape({1,2*two_pin_net_num}).to(device);
     *Viacount_Mask = torch::tensor(turning_points_count_of_all_two_pin_net,torch::kFloat).reshape({1,2*two_pin_net_num}).to(device);
 
     std::cout<<All_Gcell_Mask->dtype()<<std::endl;
